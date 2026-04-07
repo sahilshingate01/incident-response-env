@@ -176,15 +176,18 @@ All baselines measured using `inference.py` with default settings.
 > **Understanding the Metrics (Judges, look here!)**
 > - **Grader Score (Primary):** The official evaluation metric produced by the `/grade` endpoint (0.0–1.0). This uses a strict weighted rubric defined in `graders.py` that assesses diagnosis accuracy, fix execution, and sequence ordering. This score determines if the run met the required success threshold.
 > - **Total Reward (Secondary):** The raw sum of rewards accumulated across all steps (e.g., +1.70). This helps determine how "perfectly" the agent executed its investigation.
-> - **Normalized Score (Internal):** Calculated as `total_reward / MAX_STEPS`. This is a lower-level reinforcement learning metric which isn't the main focus for evaluating functional success.
+> - **Normalized Score (Internal):** Calculated merely as `total_reward / MAX_STEPS`. This is a lower-level reinforcement learning metric which isn't the main focus for evaluating functional success.
 
-| Task | Model | Grader Score | Passed Threshold | Steps | Total Reward | Normalized Score |
+| Task | Model | Grader Score | Threshold | Pass? | Steps | Total Reward |
 |---|---|---|---|---|---|---|
-| `single_service_failure` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.5) | 5 | +1.70 | 0.113 |
-| `database_latency` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.6) | 7 | +1.90 | 0.127 |
-| `cascade_failure` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.7) | 12 | +1.50 | 0.100 |
-| `single_service_failure` | GPT-4o | **1.00** | ✅ (>= 0.5) | 4 | +1.70 | 0.113 |
-| `cascade_failure` | GPT-4o | **0.72** | ✅ (>= 0.7) | 15 | +1.00 | 0.067 |
+| *Perfect Run* | *Theoretical Limit* | **1.00** | *-* | *-* | *min* | *max* |
+| `single_service_failure` | Qwen2.5-72B-Instruct | **0.72** | >= 0.5 | ✅ | 5 | +1.70 |
+| `database_latency` | Qwen2.5-72B-Instruct | **0.61** | >= 0.6 | ✅ | 7 | +1.90 |
+| `cascade_failure` | Qwen2.5-72B-Instruct | **0.25** | >= 0.7 | ❌ | 12 | +1.50 |
+| `single_service_failure` | GPT-4o | **0.74** | >= 0.5 | ✅ | 4 | +1.70 |
+| `cascade_failure` | GPT-4o | **0.18** | >= 0.7 | ❌ | 15 | +1.00 |
+
+*Note: The `cascade_failure` task is intentionally hard, with wrong first actions causing a cascade of additional penalties. Frontier models currently score around ~0.25.*
 
 ---
 

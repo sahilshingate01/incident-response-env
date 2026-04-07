@@ -1,45 +1,53 @@
 name: incident-response-env
 version: "1.0.0"
 description: "Production incident response simulation. An AI agent receives system alerts and must diagnose and remediate production failures across 3 difficulty levels."
+url: "https://sahilshingate-incident-response-env.hf.space"
 author: "Sahil Shingate"
 license: "MIT"
+
+tags:
+  - openenv
+  - incident-response
+  - sre
+  - real-world
 
 environment:
   type: text
   observation_space:
     type: object
-    description: "Current incident state including service metrics, log output, and available actions"
+    description: "Current incident state. Fields: observation_text (string), services_summary (object with status/error_rate/latency_p99_ms per service), available_actions (list[string]), step_count (int), incident_description (string), done (bool), reward (float), metadata (object with episode_id, cumulative_reward, diagnosis_state)"
   action_space:
     type: object
-    description: "Diagnostic and remediation actions (read_logs, check_metrics, rollback, restart_service, etc.)"
+    description: "Diagnostic and remediation actions. Fields: action_type (read_logs | check_metrics | check_all_services | check_recent_deploys | check_db_queries | rollback | restart_service | scale_up | declare_resolved), target (string or null), task_name (string)"
+  reward_range: [-2.0, 3.0]
 
 tasks:
   - name: single_service_failure
     difficulty: easy
-    description: "A bad deploy caused one service to fail. Identify the service and roll back."
+    description: "A bad deploy to user-service is causing 500 errors. Agent must check recent deploys, read user-service logs, and rollback the deployment."
     max_steps: 10
     success_threshold: 0.5
+    baseline_score: 0.72
 
   - name: database_latency
     difficulty: medium
-    description: "DB overload is causing API latency. Trace the root cause across 3 services and remediate."
+    description: "db-primary overloaded causing cascade to payment-service and api-gateway. Agent must check api-gateway and db-primary metrics, check queries, then scale_up db-primary."
     max_steps: 15
     success_threshold: 0.6
+    baseline_score: 0.61
 
   - name: cascade_failure
     difficulty: hard
-    description: "A cascading failure across 4 services. Find root cause and fix in correct order or make it worse."
+    description: "Connection pool exhaustion causing cascade across 4 services. Must diagnose across 3 services + logs + queries, then restart db-primary followed by payment-service in strict order."
     max_steps: 20
     success_threshold: 0.7
+    baseline_score: 0.25
 
 endpoints:
+  health: GET /health
+  tasks: GET /tasks
   reset: POST /reset
+  reset_task: POST /reset/{task_name}
   step: POST /step
   state: GET /state
-  health: GET /health
-
-tags:
-  - incident-response
-  - sre
-  - real-world
-  - openenv
+  grade: POST /grade

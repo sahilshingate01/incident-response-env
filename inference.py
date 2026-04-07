@@ -349,8 +349,8 @@ def run_episode(
 
     # ── [END] ──
     print(
-        f"[END] success={'true' if success else 'false'} "
-        f"steps={step_n} grader_score={grader_score:.2f} "
+        f"[END] task={task_name} success={'true' if success else 'false'} "
+        f"steps={step_n} grader_score={grader_score:.3f} "
         f"total_reward={total_reward:.2f} normalized={normalized:.3f} "
         f"rewards={rewards_str}"
     )
