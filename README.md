@@ -126,7 +126,7 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Affected Service** | `user-service` (error rate 40–80%, fast failures) |
 | **Required Diagnosis** | `check_recent_deploys` → `read_logs` on `user-service` (2 steps) |
 | **Required Fix** | `rollback` the bad deploy |
-| **Expected Baseline** | ~0.6 with Qwen2.5-72B-Instruct |
+| **Baseline (Qwen2.5-72B)** | Total Reward: +1.70 · Normalized Score: 0.113 · Steps: 5 |
 
 **What makes it easy:** Single service affected, clear error signal in logs (NullPointerException), suspicious deploy visible in recent history with `dep-evil-*` ID.
 
@@ -142,7 +142,7 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Affected Services** | `db-primary` (critical), `payment-service` (degraded), `api-gateway` (degraded) |
 | **Required Diagnosis** | `check_metrics` on `api-gateway` → `check_metrics` on `db-primary` → `check_db_queries` (3 steps) |
 | **Required Fix** | `scale_up` on `db-primary` + `declare_resolved` |
-| **Expected Baseline** | ~0.45 with Qwen2.5-72B-Instruct |
+| **Baseline (Qwen2.5-72B)** | Total Reward: +1.90 · Normalized Score: 0.127 · Steps: 7 |
 
 **What makes it medium:** Multi-hop reasoning required — the agent sees latency on `api-gateway` but must trace it upstream to `db-primary`, then confirm with slow query logs. The fix is `scale_up`, not `restart_service` — a common mistake.
 
@@ -159,7 +159,7 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Required Diagnosis** | 5 actions: check metrics on 3 services + read API gateway logs + check DB queries |
 | **Required Fix** | `restart_service` on `db-primary` → then `payment-service` → `declare_resolved` (**order matters**) |
 | **Wrong First Actions** | Restarting `api-gateway` or `payment-service` before diagnosis makes the cascade **worse** (−0.1 penalty) |
-| **Expected Baseline** | ~0.25 with Qwen2.5-72B-Instruct |
+| **Baseline (Qwen2.5-72B)** | Total Reward: +1.50 · Normalized Score: 0.100 · Steps: 12 |
 
 **What makes it hard:**
 1. **Deceptive signals** — `api-gateway` shows the highest visible error rate, tempting agents to restart it first. But it's a symptom, not the cause.
