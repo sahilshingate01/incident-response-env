@@ -187,6 +187,28 @@ Score = sum(step rewards) / MAX_STEPS. This is the inference.py metric. The /gra
 
 ---
 
+## Pre-Submission Validation
+
+| Check | Status | Notes |
+|---|---|---|
+| HF Space deploys | ✅ | Space live at https://sahilshingate-incident-response-env.hf.space, /health returns 200 |
+| OpenEnv spec compliance | ✅ | openenv.yaml validated, typed Pydantic models, step/reset/state endpoints all present |
+| Dockerfile builds | ✅ | python:3.11-slim base, port 7860, clean build with no errors |
+| Baseline reproduces | ✅ | inference.py completes all 3 tasks, outputs [START]/[STEP]/[END] logs, no errors |
+| 3+ tasks with graders | ✅ | single_service_failure (easy), database_latency (medium), cascade_failure (hard) — all graders return 0.0–1.0 |
+
+**Run the built-in deterministic test (no LLM required):**
+```bash
+python -m src.environment
+```
+
+**Verify task registration:**
+```bash
+curl https://sahilshingate-incident-response-env.hf.space/tasks
+```
+
+---
+
 ## Setup & Usage
 
 ### Local Development
@@ -312,21 +334,6 @@ The `inference.py` script outputs logs in the exact format required by OpenEnv j
 [STEP] step=5 action=declare_resolved reward=1.00 done=true error=null
 [END] success=true steps=5 score=0.113 rewards=0.00,0.20,0.20,0.30,1.00
 ```
-
----
-
-## Pre-Submission Checklist
-
-- ✅ HF Space deploys and returns 200
-- ✅ `/reset` endpoint returns `IncidentObservation`
-- ✅ `/step` endpoint returns reward and observation
-- ✅ `/grade` endpoint returns score 0.0–1.0
-- ✅ Dockerfile builds successfully
-- ✅ `inference.py` runs and produces `[START]/[STEP]/[END]` logs
-- ✅ 3 tasks with graders verified
-- ✅ `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN` variables defined
-
----
 
 
 ## License
