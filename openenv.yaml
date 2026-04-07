@@ -1,0 +1,45 @@
+name: incident-response-env
+version: "1.0.0"
+description: "Production incident response simulation. An AI agent receives system alerts and must diagnose and remediate production failures across 3 difficulty levels."
+author: "Sahil Shingate"
+license: "MIT"
+
+environment:
+  type: text
+  observation_space:
+    type: object
+    description: "Current incident state including service metrics, log output, and available actions"
+  action_space:
+    type: object
+    description: "Diagnostic and remediation actions (read_logs, check_metrics, rollback, restart_service, etc.)"
+
+tasks:
+  - name: single_service_failure
+    difficulty: easy
+    description: "A bad deploy caused one service to fail. Identify the service and roll back."
+    max_steps: 10
+    success_threshold: 0.5
+
+  - name: database_latency
+    difficulty: medium
+    description: "DB overload is causing API latency. Trace the root cause across 3 services and remediate."
+    max_steps: 15
+    success_threshold: 0.6
+
+  - name: cascade_failure
+    difficulty: hard
+    description: "A cascading failure across 4 services. Find root cause and fix in correct order or make it worse."
+    max_steps: 20
+    success_threshold: 0.7
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  health: GET /health
+
+tags:
+  - incident-response
+  - sre
+  - real-world
+  - openenv
