@@ -1,100 +1,68 @@
 import random
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 
 class FakeMetricsEngine:
     SERVICES = ["api-gateway", "payment-service", "user-service", "db-primary", "cache-redis"]
-    
-    def __init__(self, incident_type: Optional[str] = None):
+
+    def __init__(self, incident_type: Optional[str] = "normal"):
         self.incident_type = incident_type
-        # Seed for determinism if incident_type is provided
-        if incident_type:
-            random.seed(incident_type)
-        else:
-            random.seed("normal")
+        self.step = 0
+        random.seed(f"metrics-{incident_type}")
 
-    def get_service_metrics(self, service_name: str) -> Dict:
-        """
-        Returns dict with: error_rate (float 0-100), latency_p99_ms (int), 
-        cpu_percent (int), memory_percent (int), requests_per_sec (int)
-        """
-        # Default Normal Ranges
-        error_rate = random.uniform(0, 2)
-        latency = random.randint(50, 300)
-        cpu = random.randint(20, 60)
-        memory = random.randint(30, 70)
-        rps = random.randint(100, 500)
+    def advance_time(self):
+        self.step += 1
 
-        # Apply incident-specific anomalies
+    def get_service_metrics(self, service_name: str) -> Dict[str, Any]:
+        metrics = {
+            "p50_latency_ms": random.randint(20, 50),
+            "p95_latency_ms": random.randint(50, 100),
+            "p99_latency_ms": random.randint(100, 200),
+            "error_rate_percent": round(random.uniform(0.1, 0.5), 2),
+            "cpu_percent": random.randint(20, 40),
+            "memory_percent": random.randint(30, 50),
+            "request_throughput": random.randint(1000, 5000),
+            "error_rate": round(random.uniform(0.1, 0.5), 2) # legacy support
+        }
+
         if self.incident_type == "db_overload":
             if service_name == "db-primary":
-                error_rate = random.uniform(10, 30)
-                latency = random.randint(1000, 5000)
-                cpu = random.randint(90, 100)
-            elif service_name == "payment-service":
-                # Dependent on DB
-                error_rate = random.uniform(5, 15)
-                latency = random.randint(500, 1500)
-
-        elif self.incident_type == "memory_leak":
-            if service_name == "user-service":
-                memory = random.randint(95, 100)
-                error_rate = random.uniform(5, 20)
-                latency = random.randint(400, 1200)
+                metrics["cpu_percent"] = random.randint(90, 100)
+                metrics["error_rate_percent"] = round(random.uniform(10, 30), 2)
+                metrics["error_rate"] = metrics["error_rate_percent"]
+                metrics["p99_latency_ms"] = random.randint(1000, 5000)
 
         elif self.incident_type == "cascade_failure":
             if service_name == "db-primary":
-                error_rate = random.uniform(20, 50)
-                latency = random.randint(2000, 8000)
-            elif service_name in ["payment-service", "api-gateway"]:
-                error_rate = random.uniform(15, 40)
-                latency = random.randint(1000, 4000)
+                metrics["cpu_percent"] = random.randint(95, 100)
+                metrics["error_rate_percent"] = round(random.uniform(50, 80), 2)
+            elif service_name == "payment-service" and self.step >= 1:
+                metrics["p99_latency_ms"] = random.randint(4000, 6000)
+                metrics["error_rate_percent"] = round(random.uniform(20, 40), 2)
+                metrics["request_throughput"] = random.randint(200, 500)
+            elif service_name == "api-gateway" and self.step >= 2:
+                metrics["p99_latency_ms"] = random.randint(5000, 7000)
+                metrics["error_rate_percent"] = round(random.uniform(15, 30), 2)
+            elif service_name == "cache-redis":
+                metrics["cpu_percent"] = random.randint(85, 95)
+                metrics["p95_latency_ms"] = random.randint(200, 300)
+            
+            metrics["error_rate"] = metrics["error_rate_percent"]
 
-        elif self.incident_type == "bad_deploy":
-            if service_name == "user-service":
-                error_rate = random.uniform(40, 80)
-                latency = random.randint(100, 400) # Fast failures
-
-        elif self.incident_type == "network_partition":
-            if service_name == "cache-redis":
-                error_rate = 100.0
-                latency = 10000 # Timeout
-            elif service_name == "api-gateway":
-                error_rate = random.uniform(10, 20)
-
-        return {
-            "error_rate": round(error_rate, 2),
-            "latency_p99_ms": latency,
-            "cpu_percent": cpu,
-            "memory_percent": memory,
-            "requests_per_sec": rps
-        }
+        return metrics
 
     def get_all_services_summary(self) -> Dict[str, Dict]:
-        """
-        Returns dict of {service_name: {status: "healthy"/"degraded"/"critical", error_rate, latency}}
-        """
         summary = {}
         for service in self.SERVICES:
             metrics = self.get_service_metrics(service)
             status = "healthy"
-            if metrics["error_rate"] > 10 or metrics["latency_p99_ms"] > 1000:
+            if metrics["error_rate_percent"] > 10 or metrics["p99_latency_ms"] > 1000:
                 status = "critical"
-            elif metrics["error_rate"] > 2 or metrics["latency_p99_ms"] > 400:
+            elif metrics["error_rate_percent"] > 2 or metrics["p99_latency_ms"] > 400:
                 status = "degraded"
             
             summary[service] = {
                 "status": status,
-                "error_rate": metrics["error_rate"],
-                "latency_p99_ms": metrics["latency_p99_ms"]
+                "error_rate": metrics["error_rate_percent"],
+                "latency_p99_ms": metrics["p99_latency_ms"]
             }
         return summary
-
-if __name__ == "__main__":
-    print("--- Normal State ---")
-    engine = FakeMetricsEngine()
-    print(engine.get_all_services_summary())
-    
-    print("\n--- DB Overload Incident ---")
-    engine_db = FakeMetricsEngine("db_overload")
-    print(engine_db.get_all_services_summary())
-    print("DB Metrics:", engine_db.get_service_metrics("db-primary"))

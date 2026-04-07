@@ -148,6 +148,12 @@ class IncidentResponseEnv:
         self.resolved: bool = False
         self.done: bool = False
         self.cumulative_reward: float = 0.0
+        
+        self.internal_flags = {
+            "checked_metrics": False,
+            "checked_logs": False,
+            "identified_root_cause": False
+        }
 
         # Track which correct diagnosis / fix actions have been seen
         self._diagnosis_hits: set[str] = set()
@@ -166,6 +172,11 @@ class IncidentResponseEnv:
         self.resolved = False
         self.done = False
         self.cumulative_reward = 0.0
+        self.internal_flags = {
+            "checked_metrics": False,
+            "checked_logs": False,
+            "identified_root_cause": False
+        }
         self._diagnosis_hits = set()
         self._fix_hits = set()
 
@@ -202,6 +213,9 @@ class IncidentResponseEnv:
             )
 
         self.step_count += 1
+        self.metrics_engine.advance_time()
+        self.log_engine.advance_time()
+        
         action_key = action.action_key()
         self.actions_taken.append(action_key)
 
@@ -285,88 +299,83 @@ class IncidentResponseEnv:
 
     def _calculate_reward(self, action: IncidentAction) -> IncidentReward:
         """
-        Deterministic reward function.  Rules are evaluated in priority order;
-        first match wins.
+        Dense Reward System with state tracking capabilities.
         """
         action_key = action.action_key()
+        action_type = action.action_type
+        target = action.target or ""
 
-        # ── Rule 1 & 2: declare_resolved ──
-        # Special handling: if declare_resolved is also a correct_fix_action,
-        # we first register it as a fix hit (potentially setting resolved=True),
-        # then apply the standard Rule 1/2 check.
-        if action.action_type == "declare_resolved":
-            fix_match = self._match_scenario_action(
-                action_key, self.scenario.correct_fix_actions
-            )
-            if fix_match and fix_match not in self._fix_hits:
-                self._fix_hits.add(fix_match)
-                # Check if all fix actions are now complete
-                if self._fix_hits >= set(self.scenario.correct_fix_actions):
-                    self.resolved = True
+        reward = -0.01  # Efficiency penalty
+        reason = "Efficiency penalty"
 
-            if self.resolved:
-                return IncidentReward(value=1.0, reason="Incident fully resolved")
-            else:
-                return IncidentReward(
-                    value=-0.2,
-                    reason="Declared resolved prematurely — incident still active",
-                )
-
-        # ── Rule 7 (checked early): repeated action > 2 times ──
+        # Special repeat logic (Rule 7)
         action_count = Counter(self.actions_taken)[action_key]
         if action_count > 2:
             return IncidentReward(value=-0.1, reason="Repeated action — not useful")
 
-        # ── Rule 6: wrong_first_actions (Task 3 only) ──
-        if (
-            self.scenario.wrong_first_actions
-            and action_key in self.scenario.wrong_first_actions
-            and not self.correctly_diagnosed
-        ):
-            return IncidentReward(
-                value=-0.1,
-                reason="Incorrect remediation makes cascade worse",
-            )
-
-        # ── Rule 3: correct diagnosis action ──
-        diag_match = self._match_scenario_action(
-            action_key, self.scenario.correct_diagnosis_actions
-        )
-        if diag_match and diag_match not in self._diagnosis_hits:
-            self._diagnosis_hits.add(diag_match)
-            # Check if all diagnosis actions are now complete
-            if self._diagnosis_hits >= set(self.scenario.correct_diagnosis_actions):
-                self.correctly_diagnosed = True
-            return IncidentReward(value=0.2, reason="Good diagnostic step")
-
-        # ── Rule 4 & 5: correct fix action ──
-        fix_match = self._match_scenario_action(
-            action_key, self.scenario.correct_fix_actions
-        )
-        if fix_match:
-            if fix_match not in self._fix_hits:
-                self._fix_hits.add(fix_match)
-
-                if self.correctly_diagnosed:
-                    # Rule 4: proper fix after diagnosis
-                    if self._fix_hits >= set(self.scenario.correct_fix_actions):
-                        self.resolved = True
-                    return IncidentReward(
-                        value=0.3, reason="Correct remediation"
-                    )
+        if action_type in ["check_metrics", "check_all_services"]:
+            if not self.internal_flags["checked_metrics"]:
+                self.internal_flags["checked_metrics"] = True
+                reward += 0.2
+                reason = "Correct intermediate sequence: checked metrics"
+            else:
+                reward += 0.1
+                reason = "Partially useful: re-checked metrics"
+                
+        elif action_type == "read_logs":
+            if self.internal_flags["checked_metrics"] and not self.internal_flags["checked_logs"]:
+                self.internal_flags["checked_logs"] = True
+                reward += 0.2
+                reason = "Correct intermediate sequence: checked logs"
+            elif not self.internal_flags["checked_metrics"]:
+                reward -= 0.1
+                reason = "Irrelevant/Out of order: checked logs before metrics"
+            else:
+                reward += 0.1
+                reason = "Partially useful: re-checked logs"
+                
+        elif action_type in ["check_db_queries", "check_recent_deploys"]:
+            if self.internal_flags["checked_logs"]:
+                if not self.internal_flags["identified_root_cause"]:
+                    self.internal_flags["identified_root_cause"] = True
+                    self.correctly_diagnosed = True
+                    reward += 0.2
+                    reason = "Identified root cause perfectly"
                 else:
-                    # Rule 5: lucky fix without diagnosis
-                    if self._fix_hits >= set(self.scenario.correct_fix_actions):
-                        self.resolved = True
-                    return IncidentReward(
-                        value=0.1,
-                        reason="Lucky fix — correct action but not properly diagnosed first",
-                    )
-            # Already applied this fix — treat as neutral
-            pass
+                    reward += 0.1
+                    reason = "Partially useful step"
+            else:
+                reward -= 0.1
+                reason = "Irrelevant/Out of order: jumped to deeper checks prematurely"
 
-        # ── Rule 8: any other valid action ──
-        return IncidentReward(value=0.0, reason="Action taken but not informative")
+        elif action_type in ["restart_service", "rollback", "scale_up"]:
+            fix_match = self._match_scenario_action(action_key, self.scenario.correct_fix_actions)
+            if fix_match:
+                if fix_match not in self._fix_hits:
+                    self._fix_hits.add(fix_match)
+                    if self.internal_flags["identified_root_cause"]:
+                        reward += 0.5
+                        reason = "Correct resolution AFTER proper diagnosis"
+                    else:
+                        reward += 0.2
+                        reason = "Correct fix but poor diagnosis"
+                else:
+                    reward += 0.0
+                    reason = "Execution of already completed fix"
+            else:
+                reward -= 0.2
+                reason = "Incorrect or harmful resolution action"
+                
+        elif action_type == "declare_resolved":
+            if self._fix_hits >= set(self.scenario.correct_fix_actions) or self.resolved:
+                self.resolved = True
+                reward += 0.0
+                reason = "Incident successfully resolved"
+            else:
+                reward -= 0.2
+                reason = "Declared resolved prematurely"
+
+        return IncidentReward(value=round(reward, 4), reason=reason)
 
     def _execute_action(self, action: IncidentAction) -> str:
         """

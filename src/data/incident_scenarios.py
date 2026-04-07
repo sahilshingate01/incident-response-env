@@ -36,10 +36,10 @@ TASK_3_HARD = IncidentScenario(
   incident_type="cascade_failure",
   affected_service="multiple",
   root_cause="db_connection_pool_exhausted",
-  correct_diagnosis_actions=["check_metrics_payment-service", "check_metrics_api-gateway", "check_metrics_db-primary", "read_logs_api-gateway", "check_db_queries"],
+  correct_diagnosis_actions=["check_metrics_api-gateway", "check_metrics_payment-service", "check_metrics_db-primary", "read_logs_api-gateway", "check_db_queries"],
   correct_fix_actions=["restart_service_db-primary", "restart_service_payment-service", "declare_resolved"],
   wrong_first_actions=["restart_service_api-gateway", "restart_service_payment-service"],
-  description="Cascading failure: DB connection pool exhausted -> payment timeout -> API retry storm -> OOM"
+  description="DB connection pool exhaustion causes retry storm in payment-service. This spikes latency in api-gateway. Misleading logs suggest cache issue. Correct solution requires identifying DB bottleneck, and restarting DB THEN dependent services in correct order."
 )
 
 if __name__ == "__main__":
