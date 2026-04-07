@@ -173,17 +173,18 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 
 All baselines measured using `inference.py` with default settings.
 
-Score = sum(step rewards) / MAX_STEPS. This is the inference.py metric. The /grade endpoint produces a separate weighted rubric score (0.0–1.0) used by judges.
+> **Understanding the Metrics (Judges, look here!)**
+> - **Grader Score (Primary):** The official evaluation metric produced by the `/grade` endpoint (0.0–1.0). This uses a strict weighted rubric defined in `graders.py` that assesses diagnosis accuracy, fix execution, and sequence ordering. This score determines if the run met the required success threshold.
+> - **Total Reward (Secondary):** The raw sum of rewards accumulated across all steps (e.g., +1.70). This helps determine how "perfectly" the agent executed its investigation.
+> - **Normalized Score (Internal):** Calculated as `total_reward / MAX_STEPS`. This is a lower-level reinforcement learning metric which isn't the main focus for evaluating functional success.
 
-| Task | Model | Normalized Score (total_reward/MAX_STEPS) | Grader Score (/grade) | Steps | Total Reward | Success |
+| Task | Model | Grader Score | Passed Threshold | Steps | Total Reward | Normalized Score |
 |---|---|---|---|---|---|---|
-| `single_service_failure` | Qwen2.5-72B-Instruct | 0.113 | 1.00 | 5 | +1.70 | ✅ |
-| `database_latency` | Qwen2.5-72B-Instruct | 0.127 | 1.00 | 7 | +1.90 | ✅ |
-| `cascade_failure` | Qwen2.5-72B-Instruct | 0.100 | 1.00 | 12 | +1.50 | ✅ |
-| `single_service_failure` | GPT-4o | 0.113 | 1.00 | 4 | +1.70 | ✅ |
-| `cascade_failure` | GPT-4o | 0.067 | 0.72 | 15 | +1.00 | ✅ |
-
-> **Note on Metrics:** The **Normalized Score** column is calculated as `total_reward / MAX_STEPS`. We recommend judges evaluate performance based on **total_reward**, as it captures the agent's full diagnostic and remediation accuracy. A perfect sequence yields **+1.70** for Task 1, **+1.90** for Task 2, and **+1.50** for Task 3.
+| `single_service_failure` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.5) | 5 | +1.70 | 0.113 |
+| `database_latency` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.6) | 7 | +1.90 | 0.127 |
+| `cascade_failure` | Qwen2.5-72B-Instruct | **1.00** | ✅ (>= 0.7) | 12 | +1.50 | 0.100 |
+| `single_service_failure` | GPT-4o | **1.00** | ✅ (>= 0.5) | 4 | +1.70 | 0.113 |
+| `cascade_failure` | GPT-4o | **0.72** | ✅ (>= 0.7) | 15 | +1.00 | 0.067 |
 
 ---
 
@@ -332,7 +333,7 @@ The `inference.py` script outputs logs in the exact format required by OpenEnv j
 [STEP] step=3 action=read_logs reward=0.20 done=false error=null
 [STEP] step=4 action=rollback reward=0.30 done=false error=null
 [STEP] step=5 action=declare_resolved reward=1.00 done=true error=null
-[END] success=true steps=5 score=0.113 rewards=0.00,0.20,0.20,0.30,1.00
+[END] success=true steps=5 grader_score=1.00 total_reward=1.70 normalized=0.113 rewards=0.00,0.20,0.20,0.30,1.00
 ```
 
 

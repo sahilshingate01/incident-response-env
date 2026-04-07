@@ -320,10 +320,29 @@ def run_episode(
             )
 
     # ── Calculate final score ──
+    try:
+        grade_result = env.grade(task_name)
+    except Exception as exc:
+        print(f"Warning: /grade endpoint failed: {exc}")
+        grade_result = {}
+
+    grader_score = grade_result.get("score", 0.0)
+
+    if "passed" in grade_result:
+        success = grade_result["passed"]
+    else:
+        if task_name == "single_service_failure":
+            success = grader_score >= 0.5
+        elif task_name == "database_latency":
+            success = grader_score >= 0.6
+        elif task_name == "cascade_failure":
+            success = grader_score >= 0.7
+        else:
+            success = grader_score >= 0.5
+
     total_reward = sum(rewards)
     # Normalize: sum of rewards divided by MAX_STEPS, clamped to [0, 1]
-    score = max(0.0, min(1.0, total_reward / MAX_STEPS))
-    success = score >= SUCCESS_SCORE_THRESHOLD
+    normalized = max(0.0, min(1.0, total_reward / MAX_STEPS))
 
     # Build rewards string
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
@@ -331,13 +350,16 @@ def run_episode(
     # ── [END] ──
     print(
         f"[END] success={'true' if success else 'false'} "
-        f"steps={step_n} score={score:.3f} "
+        f"steps={step_n} grader_score={grader_score:.2f} "
+        f"total_reward={total_reward:.2f} normalized={normalized:.3f} "
         f"rewards={rewards_str}"
     )
 
     return {
         "task_name": task_name,
-        "score": round(score, 4),
+        "score": round(grader_score, 4),
+        "grader_score": round(grader_score, 4),
+        "normalized_score": round(normalized, 4),
         "steps": step_n,
         "success": success,
         "rewards": rewards,
