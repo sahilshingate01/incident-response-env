@@ -71,6 +71,42 @@ After every action (and on `reset()`), the agent receives an `IncidentObservatio
 
 Each service reports a status of `healthy`, `degraded`, or `critical` based on its error rate and p99 latency.
 
+#### Logs and Temporal Flow
+
+To enhance realism, observations evolve across steps (temporal flow) instead of being static snapshots. Logs proactively returned by the environment include:
+- Identifiable **timestamps** (in ISO format) showing events evolving over time.
+- Distinct **log levels** (INFO, WARN, ERROR).
+- Standardized `trace_id` / `request_id` markers to correlate traces.
+- Partial **stack traces** on key application errors.
+
+The environment challenges the agent to filter signal from noise by regularly injecting **30–50% irrelevant noise logs** containing unrelated service logs and benign warnings into the observations.
+
+#### Example Observation Output
+
+```json
+{
+  "timestamp": "2026-04-08T00:04:04Z",
+  "logs": [
+    {
+      "timestamp": "2026-04-08T00:03:55Z",
+      "level": "INFO",
+      "trace_id": "req-94285",
+      "service": "api-gateway",
+      "message": "Routine health check executed successfully.",
+      "noise": true
+    },
+    {
+      "timestamp": "2026-04-08T00:03:59Z",
+      "level": "ERROR",
+      "trace_id": "req-18451",
+      "service": "api-gateway",
+      "message": "Upstream timeout from payment-service. Falling back to cache... Cache MISS.",
+      "stack_trace": "at api.GatewayFilter.doFilter(GatewayFilter.java:55)\n  at cache.RedisFallback.fetch(RedisFallback.java:23)"
+    }
+  ]
+}
+```
+
 ### Action Space
 
 The agent sends an `IncidentAction` JSON with `action_type`, `target`, and `task_name`:
@@ -89,20 +125,21 @@ The agent sends an `IncidentAction` JSON with `action_type`, `target`, and `task
 
 ### Reward Function
 
-The reward function is **deterministic** and uses **priority-based evaluation** — the first matching rule fires:
+The reward function shapes behavior by deeply rewarding thorough diagnosis *before* any action is taken. The environment implements a continuous dense reward tied to its internal state tracking mechanism (monitoring flags like `checked_logs`, `checked_metrics`, and `identified_root_cause`).
 
-| Priority | Action | Reward | Condition |
-|---|---|---|---|
-| 1 | `declare_resolved` | **+1.0** | Environment is actually resolved |
-| 2 | `declare_resolved` | **−0.2** | Premature declaration — incident still active |
-| 3 | Correct diagnosis action | **+0.2** | Action matches scenario's required diagnosis steps (first time) |
-| 4 | Correct fix action | **+0.3** | Correct remediation *after* full diagnosis |
-| 5 | Correct fix action | **+0.1** | "Lucky fix" — correct action but without proper diagnosis first |
-| 6 | Wrong first action | **−0.1** | Incorrect remediation makes cascade worse (Task 3 only) |
-| 7 | Repeated action (>2×) | **−0.1** | Same action taken more than twice |
-| 8 | Any other valid action | **0.0** | Action executed but not informative for this scenario |
+**Diagnostic Rewards:**
+- **+0.2** for a correct intermediate diagnostic step
+- **+0.1** for a partially useful step
+- **0.0** for neutral evaluation
+- **-0.1** for an irrelevant step
 
-**Key design choice:** The agent receives partial credit (+0.2) for each diagnostic step, encouraging thorough investigation. Fixing without diagnosing first yields reduced reward (+0.1 vs +0.3), teaching agents that *understanding the problem* matters as much as fixing it.
+**Action & Resolution Rewards:**
+- **+0.5** for a correct final resolution AFTER proper diagnosis
+- **+0.2** for a lucky "blind" fix without diagnosis
+- **-0.2** for an incorrect or harmful action
+- **-0.01** small efficiency penalty applied per step taken to avoid loops.
+
+**Key design choice:** The agent receives partial credit for each diagnostic step in correct sequence, encouraging thorough investigation. Fixing without diagnosing first yields significantly reduced reward, teaching agents that *understanding the problem* explicitly matters as much as fixing it.
 
 ### Episode Boundaries
 
@@ -161,11 +198,21 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Wrong First Actions** | Restarting `api-gateway` or `payment-service` before diagnosis makes the cascade **worse** (−0.1 penalty) |
 | **Baseline (Qwen2.5-72B)** | Total Reward: +1.50 · Normalized Score: 0.100 · Steps: 12 |
 
-**What makes it hard:**
-1. **Deceptive signals** — `api-gateway` shows the highest visible error rate, tempting agents to restart it first. But it's a symptom, not the cause.
-2. **Fix ordering** — DB must be restarted before payment-service, or the retry storm continues.
-3. **Penalty trap** — Restarting `payment-service` before diagnosis triggers the wrong-first-action penalty *and* doesn't count as a correct fix.
-4. **5-step diagnosis** — The agent must be thorough before acting.
+**What makes it hard (Breaks Naive Agents):**
+1. **Multi-step reasoning** — Root cause is entirely invisible at the initial layer; the agent requires 5-8 continuous deductive steps tracking logs and queues backwards.
+2. **Cascading failures** — The underlying broken database cascades connections into complete failures across orthogonal services. 
+3. **Misleading signals** — Initial API logs throw misleading "Cache MISS" signals and misdirects implying a problem with the cache service (false leads).
+4. **Fix Ordering** — Action order is rigorously enforced. The DB must identically be restarted THEN the payment-service. Penalties trigger on wrong operational ordering.
+
+---
+
+## Built-in Trajectory Grader
+
+The environment utilizes a dedicated, bulletproof grade implementation:
+- **Deterministic scoring:** Given the exact same array trajectory actions, the Grader will deterministically produce identical grading scores.
+- **Evaluates full trajectory:** Unlike simple task evaluations marking final resolution status, grading occurs over sequential history actions.
+- **Prevents skipping diagnosis:** Directly guessing the resolution action before proper metric and log validation will flag an anti-hack sequence.
+- **Prevents reward hacking:** Triggers a rigid cap score reduction (to `0.3`) if shortcut validation paths are identified.
 
 ---
 
@@ -174,7 +221,7 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 All baselines measured using `inference.py` with default settings.
 
 > **Understanding the Metrics (Judges, look here!)**
-> - **Grader Score (Primary):** The official evaluation metric produced by the `/grade` endpoint (0.0–1.0). This uses a strict weighted rubric defined in `graders.py` that assesses diagnosis accuracy, fix execution, and sequence ordering. This score determines if the run met the required success threshold.
+> - **Grader Score (Primary):** The official evaluation metric produced by the `/grade` endpoint (0.0–1.0). This uses a strict weighted rubric.
 > - **Total Reward (Secondary):** The raw sum of rewards accumulated across all steps (e.g., +1.70). This helps determine how "perfectly" the agent executed its investigation.
 > - **Normalized Score (Internal):** Calculated merely as `total_reward / MAX_STEPS`. This is a lower-level reinforcement learning metric which isn't the main focus for evaluating functional success.
 
