@@ -126,7 +126,6 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Affected Service** | `user-service` (error rate 40–80%, fast failures) |
 | **Required Diagnosis** | `check_recent_deploys` → `read_logs` on `user-service` (2 steps) |
 | **Required Fix** | `rollback` the bad deploy |
-| **Success Threshold** | Score ≥ 0.5 |
 | **Expected Baseline** | ~0.6 with Qwen2.5-72B-Instruct |
 
 **What makes it easy:** Single service affected, clear error signal in logs (NullPointerException), suspicious deploy visible in recent history with `dep-evil-*` ID.
@@ -143,7 +142,6 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Affected Services** | `db-primary` (critical), `payment-service` (degraded), `api-gateway` (degraded) |
 | **Required Diagnosis** | `check_metrics` on `api-gateway` → `check_metrics` on `db-primary` → `check_db_queries` (3 steps) |
 | **Required Fix** | `scale_up` on `db-primary` + `declare_resolved` |
-| **Success Threshold** | Score ≥ 0.6 |
 | **Expected Baseline** | ~0.45 with Qwen2.5-72B-Instruct |
 
 **What makes it medium:** Multi-hop reasoning required — the agent sees latency on `api-gateway` but must trace it upstream to `db-primary`, then confirm with slow query logs. The fix is `scale_up`, not `restart_service` — a common mistake.
@@ -161,7 +159,6 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 | **Required Diagnosis** | 5 actions: check metrics on 3 services + read API gateway logs + check DB queries |
 | **Required Fix** | `restart_service` on `db-primary` → then `payment-service` → `declare_resolved` (**order matters**) |
 | **Wrong First Actions** | Restarting `api-gateway` or `payment-service` before diagnosis makes the cascade **worse** (−0.1 penalty) |
-| **Success Threshold** | Score ≥ 0.7 |
 | **Expected Baseline** | ~0.25 with Qwen2.5-72B-Instruct |
 
 **What makes it hard:**
@@ -174,17 +171,19 @@ Calling `declare_resolved` prematurely does **not** end the episode — the agen
 
 ## Baseline Scores
 
-All baselines measured using `inference.py` with default settings:
+All baselines measured using `inference.py` with default settings.
 
-| Task | Model | Score | Steps | Total Reward | Success |
-|---|---|---|---|---|---|
-| `single_service_failure` | Qwen2.5-72B-Instruct | 0.113 | 5 | +1.70 | ✅ |
-| `database_latency` | Qwen2.5-72B-Instruct | 0.127 | 7 | +1.90 | ✅ |
-| `cascade_failure` | Qwen2.5-72B-Instruct | 0.100 | 12 | +1.50 | ✅ |
-| `single_service_failure` | GPT-4o | 0.113 | 4 | +1.70 | ✅ |
-| `cascade_failure` | GPT-4o | 0.067 | 15 | +1.00 | ✅ |
+Score = sum(step rewards) / MAX_STEPS. This is the inference.py metric. The /grade endpoint produces a separate weighted rubric score (0.0–1.0) used by judges.
 
-> **Note on Metrics:** The `score` column is normalized as `total_reward / MAX_STEPS`. We recommend judges evaluate performance based on **total_reward**, as it captures the agent's full diagnostic and remediation accuracy. A perfect sequence yields **+1.70** for Task 1, **+1.90** for Task 2, and **+1.50** for Task 3.
+| Task | Model | Normalized Score (total_reward/MAX_STEPS) | Grader Score (/grade) | Steps | Total Reward | Success |
+|---|---|---|---|---|---|---|
+| `single_service_failure` | Qwen2.5-72B-Instruct | 0.113 | 1.00 | 5 | +1.70 | ✅ |
+| `database_latency` | Qwen2.5-72B-Instruct | 0.127 | 1.00 | 7 | +1.90 | ✅ |
+| `cascade_failure` | Qwen2.5-72B-Instruct | 0.100 | 1.00 | 12 | +1.50 | ✅ |
+| `single_service_failure` | GPT-4o | 0.113 | 1.00 | 4 | +1.70 | ✅ |
+| `cascade_failure` | GPT-4o | 0.067 | 0.72 | 15 | +1.00 | ✅ |
+
+> **Note on Metrics:** The **Normalized Score** column is calculated as `total_reward / MAX_STEPS`. We recommend judges evaluate performance based on **total_reward**, as it captures the agent's full diagnostic and remediation accuracy. A perfect sequence yields **+1.70** for Task 1, **+1.90** for Task 2, and **+1.50** for Task 3.
 
 ---
 
