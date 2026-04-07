@@ -184,7 +184,7 @@ All baselines measured using `inference.py` with default settings:
 | `single_service_failure` | GPT-4o | 0.113 | 4 | +1.70 | ✅ |
 | `cascade_failure` | GPT-4o | 0.067 | 15 | +1.00 | ✅ |
 
-> **Note:** Scores are normalized as `sum(rewards) / MAX_STEPS`. The raw total reward is a better measure of agent quality. A perfect run on Task 1 yields +1.70 total reward.
+> **Note on Metrics:** The `score` column is normalized as `total_reward / MAX_STEPS`. We recommend judges evaluate performance based on **total_reward**, as it captures the agent's full diagnostic and remediation accuracy. A perfect sequence yields **+1.70** for Task 1, **+1.90** for Task 2, and **+1.50** for Task 3.
 
 ---
 
@@ -315,6 +315,20 @@ The `inference.py` script outputs logs in the exact format required by OpenEnv j
 ```
 
 ---
+
+## Pre-Submission Checklist
+
+- ✅ HF Space deploys and returns 200
+- ✅ `/reset` endpoint returns `IncidentObservation`
+- ✅ `/step` endpoint returns reward and observation
+- ✅ `/grade` endpoint returns score 0.0–1.0
+- ✅ Dockerfile builds successfully
+- ✅ `inference.py` runs and produces `[START]/[STEP]/[END]` logs
+- ✅ 3 tasks with graders verified
+- ✅ `API_BASE_URL`, `MODEL_NAME`, `HF_TOKEN` variables defined
+
+---
+
 
 ## License
 
