@@ -192,8 +192,8 @@ async def root():
         .hard .dif-badge { background: rgba(239,68,68,0.1); color: var(--accent); }
 
         .demo-window { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; display: grid; grid-template-columns: 1fr 320px; height: 650px; }
-        .demo-main { padding: 1.5rem; display: flex; flex-direction: column; background: #000; }
-        .terminal { background: var(--terminal-bg); border-radius: 8px; padding: 1rem; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--terminal-text); overflow-y: auto; flex-grow: 1; margin-bottom: 1rem; border: 1px solid #222; }
+        .demo-main { padding: 1.5rem; display: flex; flex-direction: column; background: #000; min-height: 0; }
+        .terminal { background: var(--terminal-bg); border-radius: 8px; padding: 1rem; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: var(--terminal-text); overflow-y: auto; flex-grow: 1; margin-bottom: 1rem; border: 1px solid #222; white-space: pre-wrap; word-break: break-all; }
         .demo-sidebar { padding: 1.5rem; border-left: 1px solid var(--border); display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; }
         .stat-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.8rem; }
         .reward-val { font-size: 1.2rem; font-weight: 800; color: var(--green); }
