@@ -70,8 +70,6 @@ VALID_ACTIONS = [
 
 MODEL_NAME = os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
-if not NVIDIA_API_KEY:
-    raise ValueError("NVIDIA_API_KEY environment variable is missing")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
@@ -391,6 +389,15 @@ def _start_env_server() -> subprocess.Popen | None:
     if "localhost" not in ENV_BASE_URL and "127.0.0.1" not in ENV_BASE_URL:
         return None  # Remote server — don't start locally
 
+    # ── Check if already running ──
+    try:
+        r = httpx.get(f"{ENV_BASE_URL.rstrip('/')}/health", timeout=1.0)
+        if r.status_code == 200:
+            print(f"Environment server already running at {ENV_BASE_URL}")
+            return None
+    except (httpx.ConnectError, httpx.ReadTimeout):
+        pass
+
     project_root = Path(__file__).resolve().parent
     print(f"Starting environment server at {ENV_BASE_URL} ...")
 
@@ -461,9 +468,16 @@ def main():
     server_proc = _start_env_server()
 
     # ── Create clients ──
+    if not NVIDIA_API_KEY:
+        print("! WARNING: NVIDIA_API_KEY environment variable is not set.")
+        print("! Inference will likely fail unless it's provided in the environment.")
+        effective_key = "missing_api_key_placeholder"
+    else:
+        effective_key = NVIDIA_API_KEY
+
     llm = OpenAI(
         base_url=API_BASE_URL,
-        api_key=NVIDIA_API_KEY,
+        api_key=effective_key,
     )
     env = EnvClient()
 

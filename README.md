@@ -178,6 +178,34 @@ All baselines measured using `inference.py` (optimized for NVIDIA NIM).
 
 ---
 
+## ## Pre-Submission Validation
+
+Before submitting your environment to the OpenEnv Hub, run these validation steps to ensure your submission passes all automated checks.
+
+### 📋 Validation Checklist
+| Check | Requirement | Status |
+|---|---|---|
+| **Port Exposure** | Container listens on port `7860` | 🟢 |
+| **Task Registration** | `/tasks` returns 3 valid tasks | 🟢 |
+| **Logic Consistency** | `python environment.py` passes all test episodes | 🟢 |
+| **Inference Baseline** | `inference.py` produces `[END]` log lines for all tasks | 🟢 |
+| **Key Handling** | System handles missing `NVIDIA_API_KEY` without crashing | 🟢 |
+
+### 🛠️ Verification Commands
+
+```bash
+# 1. Run the deterministic environment test harness
+python environment.py
+
+# 2. Check task registration metadata
+curl http://localhost:7860/tasks
+
+# 3. Verify the inference script (dry-run)
+python inference.py
+```
+
+---
+
 ## ## Setup & Usage
 
 ### 🚀 Quick Start (with `uv`)
