@@ -17,11 +17,13 @@ class FakeMetricsEngine:
             "p50_latency_ms": random.randint(20, 50),
             "p95_latency_ms": random.randint(50, 100),
             "p99_latency_ms": random.randint(100, 200),
+            "latency_p99_ms": random.randint(100, 200), # matched key
             "error_rate_percent": round(random.uniform(0.1, 0.5), 2),
+            "error_rate": round(random.uniform(0.1, 0.5), 2),
             "cpu_percent": random.randint(20, 40),
             "memory_percent": random.randint(30, 50),
             "request_throughput": random.randint(1000, 5000),
-            "error_rate": round(random.uniform(0.1, 0.5), 2) # legacy support
+            "requests_per_sec": random.randint(1000, 5000),
         }
 
         if self.incident_type == "db_overload":
@@ -30,6 +32,7 @@ class FakeMetricsEngine:
                 metrics["error_rate_percent"] = round(random.uniform(10, 30), 2)
                 metrics["error_rate"] = metrics["error_rate_percent"]
                 metrics["p99_latency_ms"] = random.randint(1000, 5000)
+                metrics["latency_p99_ms"] = metrics["p99_latency_ms"]
 
         elif self.incident_type == "cascade_failure":
             if service_name == "db-primary":
@@ -37,10 +40,13 @@ class FakeMetricsEngine:
                 metrics["error_rate_percent"] = round(random.uniform(50, 80), 2)
             elif service_name == "payment-service" and self.step >= 1:
                 metrics["p99_latency_ms"] = random.randint(4000, 6000)
+                metrics["latency_p99_ms"] = metrics["p99_latency_ms"]
                 metrics["error_rate_percent"] = round(random.uniform(20, 40), 2)
                 metrics["request_throughput"] = random.randint(200, 500)
+                metrics["requests_per_sec"] = metrics["request_throughput"]
             elif service_name == "api-gateway" and self.step >= 2:
                 metrics["p99_latency_ms"] = random.randint(5000, 7000)
+                metrics["latency_p99_ms"] = metrics["p99_latency_ms"]
                 metrics["error_rate_percent"] = round(random.uniform(15, 30), 2)
             elif service_name == "cache-redis":
                 metrics["cpu_percent"] = random.randint(85, 95)

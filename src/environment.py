@@ -299,83 +299,75 @@ class IncidentResponseEnv:
 
     def _calculate_reward(self, action: IncidentAction) -> IncidentReward:
         """
-        Dense Reward System with state tracking capabilities.
+        Calculates the reward for the current action based on the scenario's
+        correct diagnosis and fix actions.
         """
         action_key = action.action_key()
         action_type = action.action_type
-        target = action.target or ""
-
-        reward = -0.01  # Efficiency penalty
+        
+        # 1. Efficiency penalty ( Rule 10 )
+        reward = 0.0
         reason = "Efficiency penalty"
 
-        # Special repeat logic (Rule 7)
-        action_count = Counter(self.actions_taken)[action_key]
-        if action_count > 2:
-            return IncidentReward(value=-0.1, reason="Repeated action — not useful")
+        # 2. Duplicate action penalty ( Rule 7 )
+        if self.actions_taken.count(action_key) > 1:
+            reward -= 0.05
+            reason = "Repeated action penalty"
+            return IncidentReward(value=round(reward, 4), reason=reason)
 
-        if action_type in ["check_metrics", "check_all_services"]:
-            if not self.internal_flags["checked_metrics"]:
-                self.internal_flags["checked_metrics"] = True
+        # 3. Diagnosis rewards
+        diag_match = self._match_scenario_action(action_key, self.scenario.correct_diagnosis_actions)
+        if diag_match:
+            if diag_match not in self._diagnosis_hits:
+                self._diagnosis_hits.add(diag_match)
                 reward += 0.2
-                reason = "Correct intermediate sequence: checked metrics"
-            else:
-                reward += 0.1
-                reason = "Partially useful: re-checked metrics"
+                reason = "Correct diagnostic step"
                 
-        elif action_type == "read_logs":
-            if self.internal_flags["checked_metrics"] and not self.internal_flags["checked_logs"]:
-                self.internal_flags["checked_logs"] = True
-                reward += 0.2
-                reason = "Correct intermediate sequence: checked logs"
-            elif not self.internal_flags["checked_metrics"]:
-                reward -= 0.1
-                reason = "Irrelevant/Out of order: checked logs before metrics"
-            else:
-                reward += 0.1
-                reason = "Partially useful: re-checked logs"
-                
-        elif action_type in ["check_db_queries", "check_recent_deploys"]:
-            if self.internal_flags["checked_logs"]:
-                if not self.internal_flags["identified_root_cause"]:
-                    self.internal_flags["identified_root_cause"] = True
+                # Check if all diagnosis steps are done
+                if self._diagnosis_hits >= set(self.scenario.correct_diagnosis_actions):
                     self.correctly_diagnosed = True
-                    reward += 0.2
-                    reason = "Identified root cause perfectly"
-                else:
-                    reward += 0.1
-                    reason = "Partially useful step"
+                    self.internal_flags["identified_root_cause"] = True
             else:
-                reward -= 0.1
-                reason = "Irrelevant/Out of order: jumped to deeper checks prematurely"
+                reward += 0.05
+                reason = "Already performed this diagnostic step"
 
-        elif action_type in ["restart_service", "rollback", "scale_up"]:
-            fix_match = self._match_scenario_action(action_key, self.scenario.correct_fix_actions)
-            if fix_match:
-                if fix_match not in self._fix_hits:
-                    self._fix_hits.add(fix_match)
-                    if self.internal_flags["identified_root_cause"]:
-                        reward += 0.5
-                        reason = "Correct resolution AFTER proper diagnosis"
-                    else:
-                        reward += 0.2
-                        reason = "Correct fix but poor diagnosis"
+        # 4. Fix rewards
+        fix_match = self._match_scenario_action(action_key, self.scenario.correct_fix_actions)
+        if fix_match:
+            if fix_match not in self._fix_hits:
+                self._fix_hits.add(fix_match)
+                # Partial credit for fix, more if diagnosed
+                if self.correctly_diagnosed:
+                    reward += 0.3
+                    reason = "Correct fix applied after proper diagnosis"
                 else:
-                    reward += 0.0
-                    reason = "Execution of already completed fix"
+                    reward += 0.2
+                    reason = "Correct fix applied without full diagnosis"
             else:
-                reward -= 0.2
-                reason = "Incorrect or harmful resolution action"
-                
-        elif action_type == "declare_resolved":
-            if self._fix_hits >= set(self.scenario.correct_fix_actions) or self.resolved:
-                self.resolved = True
                 reward += 0.0
+                reason = "Fix already applied"
+        
+        # 5. Resolution reward
+        if action_type == "declare_resolved":
+            # Check if all fixes are applied
+            all_fixes_done = self._fix_hits >= set(self.scenario.correct_fix_actions)
+            if all_fixes_done:
+                self.resolved = True
+                reward += 1.0
                 reason = "Incident successfully resolved"
             else:
                 reward -= 0.2
                 reason = "Declared resolved prematurely"
 
-        return IncidentReward(value=round(reward, 4), reason=reason)
+        # 6. Penalty for wrong first actions if defined (apply if taken before full diagnosis)
+        if not self.correctly_diagnosed and self.scenario.wrong_first_actions:
+            if self._match_scenario_action(action_key, self.scenario.wrong_first_actions):
+                reward -= 0.1
+                reason = "Penalty for incorrect initial action"
+
+        # Cap reward to Pydantic constraints [-1, 1]
+        final_reward = max(-1.0, min(1.0, reward))
+        return IncidentReward(value=round(final_reward, 4), reason=reason)
 
     def _execute_action(self, action: IncidentAction) -> str:
         """
