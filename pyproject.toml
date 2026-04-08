@@ -18,7 +18,13 @@ dependencies = [
     "openai>=1.30.0",
     "httpx==0.27.0",
     "python-dotenv==1.0.0",
+    "openenv-core>=0.2.0",
 ]
+
+[project.scripts]
+openenv-server = "src.server.app:main"
+server = "src.server.app:main"
+
 
 [project.urls]
 Homepage = "https://sahilshingate-incident-response-env.hf.space"

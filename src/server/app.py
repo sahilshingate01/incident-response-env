@@ -1,12 +1,11 @@
-"""
-FastAPI server wrapping the Incident Response RL environment.
-
-Start with:
-    uvicorn src.server.app:app --host 0.0.0.0 --port 7860
-"""
-
 from __future__ import annotations
 
+"""
+Start with:
+    openenv-server
+"""
+
+import uvicorn
 import logging
 import os
 import time
@@ -575,6 +574,12 @@ async def grade_episode(req: GradeRequest):
         result["passed"],
     )
     return result
+
+
+def main():
+    """Entry point for the server."""
+    port = int(os.environ.get("PORT", 7860))
+    uvicorn.run("src.server.app:app", host="0.0.0.0", port=port, log_level="info")
 
 
 # ──────────────────────────────────────────────
