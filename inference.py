@@ -29,7 +29,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+from dotenv import load_dotenv
 from groq import Groq
+
+# Load environment variables from .env if it exists
+load_dotenv()
 
 # ──────────────────────────────────────────────
 # Constants
