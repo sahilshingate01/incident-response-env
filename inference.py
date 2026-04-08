@@ -9,11 +9,10 @@ Usage:
     python inference.py
 
 Required env vars:
-    HF_TOKEN       — HuggingFace API token (used as api_key for OpenAI client)
+    GROQ_API_KEY   — Groq API token
 
 Optional env vars:
-    API_BASE_URL   — LLM router URL         (default: https://router.huggingface.co/v1)
-    MODEL_NAME     — model to use            (default: Qwen/Qwen2.5-72B-Instruct)
+    MODEL_NAME     — model to use            (default: llama-3.3-70b-versatile)
     INCIDENT_TASK  — override task list      (default: run all 3)
     ENV_BASE_URL   — environment server URL  (default: http://localhost:7860)
 """
@@ -30,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from openai import OpenAI
+from groq import Groq
 
 # ──────────────────────────────────────────────
 # Constants
@@ -63,9 +62,10 @@ VALID_ACTIONS = [
 # Configuration from env vars
 # ──────────────────────────────────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+if not GROQ_API_KEY:
+    raise ValueError("GROQ_API_KEY environment variable is missing")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
 # ──────────────────────────────────────────────
@@ -221,7 +221,7 @@ class EnvClient:
 
 def run_episode(
     task_name: str,
-    llm: OpenAI,
+    llm: Groq,
     env: EnvClient,
 ) -> dict:
     """
@@ -433,9 +433,8 @@ def main():
     print("  Incident Response Environment — Inference Runner")
     print("=" * 65)
     print(f"  Model:     {MODEL_NAME}")
-    print(f"  API Base:  {API_BASE_URL}")
     print(f"  Env URL:   {ENV_BASE_URL}")
-    print(f"  HF Token:  {'set' if HF_TOKEN else 'NOT SET'}")
+    print(f"  Groq Key:  {'set' if GROQ_API_KEY else 'NOT SET'}")
     print("=" * 65)
     print()
 
@@ -450,9 +449,8 @@ def main():
     server_proc = _start_env_server()
 
     # ── Create clients ──
-    llm = OpenAI(
-        base_url=API_BASE_URL,
-        api_key=HF_TOKEN or "dummy-key",
+    llm = Groq(
+        api_key=GROQ_API_KEY,
     )
     env = EnvClient()
 
