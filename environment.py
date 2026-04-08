@@ -11,16 +11,16 @@ from collections import Counter
 from typing import Dict, List
 from uuid import uuid4
 
-from src.data.fake_deploys import FakeDeployHistory
-from src.data.fake_logs import FakeLogEngine
-from src.data.fake_metrics import FakeMetricsEngine
-from src.data.incident_scenarios import (
+from data.fake_deploys import FakeDeployHistory
+from data.fake_logs import FakeLogEngine
+from data.fake_metrics import FakeMetricsEngine
+from data.incident_scenarios import (
     TASK_1_EASY,
     TASK_2_MEDIUM,
     TASK_3_HARD,
     IncidentScenario,
 )
-from src.models import (
+from models import (
     VALID_ACTION_TYPES,
     IncidentAction,
     IncidentObservation,

@@ -400,7 +400,7 @@ def _start_env_server() -> subprocess.Popen | None:
     proc = subprocess.Popen(
         [
             sys.executable, "-m", "uvicorn",
-            "src.server.app:app",
+            "server.app:app",
             "--host", "0.0.0.0",
             "--port", "7860",
             "--log-level", "warning",

@@ -22,8 +22,8 @@ dependencies = [
 ]
 
 [project.scripts]
-openenv-server = "src.server.app:main"
-server = "src.server.app:main"
+openenv-server = "server.app:main"
+server = "server.app:main"
 
 
 [project.urls]

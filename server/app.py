@@ -17,9 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, HTMLResponse
 from pydantic import BaseModel, ValidationError
 
-from src.environment import IncidentResponseEnv, SCENARIO_MAP
-from src.models import IncidentAction, IncidentObservation, IncidentState
-from src.server.graders import grade
+from environment import IncidentResponseEnv, SCENARIO_MAP
+from models import IncidentAction, IncidentObservation, IncidentState
+from server.graders import grade
 
 # ──────────────────────────────────────────────
 # Logging
@@ -579,7 +579,7 @@ async def grade_episode(req: GradeRequest):
 def main():
     """Entry point for the server."""
     port = int(os.environ.get("PORT", 7860))
-    uvicorn.run("src.server.app:app", host="0.0.0.0", port=port, log_level="info")
+    uvicorn.run("server.app:app", host="0.0.0.0", port=port, log_level="info")
 
 
 # ──────────────────────────────────────────────
@@ -599,7 +599,7 @@ if __name__ == "__main__":
         proc = subprocess.Popen(
             [
                 sys.executable, "-m", "uvicorn",
-                "src.server.app:app",
+                "server.app:app",
                 "--host", "127.0.0.1",
                 "--port", "7860",
                 "--log-level", "warning",

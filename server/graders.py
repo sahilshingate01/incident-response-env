@@ -7,7 +7,7 @@ returns a score dict with { score, max_score, breakdown, passed }.
 
 from __future__ import annotations
 from typing import List, Dict, Any
-from src.models import IncidentState
+from models import IncidentState
 
 def _index_of(actions: list[str], key: str) -> int | None:
     for i, a in enumerate(actions):
