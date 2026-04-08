@@ -142,5 +142,6 @@ GRADER_MAP = {
 def grade(task_name: str, state: IncidentState, actions_taken: list[str], total_reward: float) -> dict:
     grader_fn = GRADER_MAP.get(task_name)
     if grader_fn is None:
+        # OpenEnv Phase 2: Score must be strictly > 0.0
         return {"score": 0.01, "max_score": 1.0, "breakdown": {}, "passed": False}
     return grader_fn(state, actions_taken, total_reward)

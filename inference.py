@@ -9,10 +9,11 @@ Usage:
     python inference.py
 
 Required env vars:
-    HF_TOKEN       — Hugging Face / API key  (replaces NVIDIA_API_KEY)
+    API_KEY        — Primary API key (injected by OpenEnv)
+    HF_TOKEN       — Backwards compatibility key
+    API_BASE_URL   — LLM proxy URL (injected by OpenEnv)
 
 Optional env vars:
-    API_BASE_URL   — LLM base URL            (default: https://api-inference.huggingface.co/v1/)
     MODEL_NAME     — model to use            (default: meta-llama/Llama-3.1-70B-Instruct)
     INCIDENT_TASK  — override task list      (default: run all 3)
     ENV_BASE_URL   — environment server URL  (default: http://localhost:7860)
@@ -69,7 +70,7 @@ VALID_ACTIONS = [
 # ──────────────────────────────────────────────
 
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-70B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("NVIDIA_API_KEY") # Backward compatibility
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or os.getenv("NVIDIA_API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1/")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
@@ -358,14 +359,17 @@ def run_episode(
             success = grader_score >= 0.5
 
     total_reward = sum(rewards)
-    # Normalize: sum of rewards divided by MAX_STEPS, clamped to [0, 1]
-    normalized = max(0.0, min(1.0, total_reward / MAX_STEPS))
+    # Normalize: sum of rewards divided by MAX_STEPS, clamped to (0.01, 0.99)
+    # OpenEnv Requirement: strictly between 0 and 1
+    normalized = max(0.01, min(0.99, total_reward / (MAX_STEPS or 1)))
 
     # Build rewards string
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
     # ── [END] ──
-    log_end(success=success, steps=step_n, score=grader_score, rewards=rewards)
+    # Ensure final logged score is strictly within (0, 1)
+    final_scorable_score = max(0.01, min(0.99, grader_score))
+    log_end(success=success, steps=step_n, score=final_scorable_score, rewards=rewards)
 
     return {
         "task_name": task_name,
@@ -455,7 +459,8 @@ def main():
     print("=" * 65)
     print(f"  Model:      {MODEL_NAME}")
     print(f"  Env URL:    {ENV_BASE_URL}")
-    print(f"  HF Token:   {'set' if HF_TOKEN else 'NOT SET'}")
+    print(f"  API URL:    {API_BASE_URL}")
+    print(f"  API Key:    {'set' if API_KEY else 'NOT SET'}")
     print("=" * 65)
     print()
 
@@ -470,12 +475,12 @@ def main():
     server_proc = _start_env_server()
 
     # ── Create clients ──
-    if not HF_TOKEN:
-        print("! WARNING: HF_TOKEN environment variable is not set.")
-        print("! Inference will likely fail unless it's provided in the environment.")
-        effective_key = "missing_api_key_placeholder"
+    if not API_KEY:
+        print("! WARNING: API_KEY/HF_TOKEN environment variable is not set.")
+        print("! Using 'missing_key' placeholder. Inference will likely fail unless provided.")
+        effective_key = "missing_key"
     else:
-        effective_key = HF_TOKEN
+        effective_key = API_KEY
 
     llm = OpenAI(
         base_url=API_BASE_URL,
