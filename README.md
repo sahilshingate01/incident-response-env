@@ -167,8 +167,10 @@ The environment utilizes a dedicated, bulletproof grade implementation:
 All baselines measured using `inference.py` (optimized for NVIDIA NIM).
 
 > **Understanding the Metrics**
-> - **Grader Score (Primary):** Official evaluation metric (0.0–1.0).
-> - **Total Reward (Secondary):** Raw sum of rewards accumulated.
+> - **Grader Score (Primary):** Official evaluation metric (0.0–1.0) derived from trajectory coverage.
+> - **Total Reward (Secondary):** Raw sum of rewards accumulated during the episode.
+> 
+> *Note on Normalization: The **Grader Score** is the deterministic measure of investigative quality. You may notice low "normalized rewards" (reward/steps) in some logs; this is expected as high-quality SRE trajectories prioritize thoroughness over raw speed. **Total Reward** is the most accurate reflection of task resolution success.*
 
 | Task | Model | Grader Score | Pass? | Steps | Total Reward |
 |---|---|---|---|---|---|
