@@ -65,14 +65,18 @@ def grade_trajectory_generic(
 
     if early_fix:
         # Cap score due to jumping to fix
+        capped_val = min(0.3, fix_score)
+        # OpenEnv: Must be strictly > 0
+        clamped_capped = max(0.01, min(0.99, capped_val))
+
         return {
-            "score": min(0.3, fix_score),
+            "score": clamped_capped,
             "max_score": 1.0,
             "breakdown": {
-                "diagnosis_score": 0.0,
-                "fix_score": fix_score,
-                "sequence_score": 0.0,
-                "efficiency_score": 0.0,
+                "diagnosis_score": 0.01,
+                "fix_score": round(fix_score, 4),
+                "sequence_score": 0.01,
+                "efficiency_score": 0.01,
                 "capped_due_to_hacking": True
             },
             "passed": False
@@ -96,8 +100,12 @@ def grade_trajectory_generic(
         "capped_due_to_hacking": False
     }
 
+    # OpenEnv Phase 2 Requirement: Scores must be strictly within (0, 1)
+    # 0.00 and 1.00 are specifically prohibited by the validator.
+    clamped_score = max(0.01, min(0.99, total_score))
+
     return {
-        "score": min(1.0, total_score),
+        "score": clamped_score,
         "max_score": 1.0,
         "breakdown": breakdown,
         "passed": total_score >= 0.7,
@@ -134,5 +142,5 @@ GRADER_MAP = {
 def grade(task_name: str, state: IncidentState, actions_taken: list[str], total_reward: float) -> dict:
     grader_fn = GRADER_MAP.get(task_name)
     if grader_fn is None:
-        return {"score": 0.0, "max_score": 1.0, "breakdown": {}, "passed": False}
+        return {"score": 0.01, "max_score": 1.0, "breakdown": {}, "passed": False}
     return grader_fn(state, actions_taken, total_reward)
