@@ -9,11 +9,11 @@ Usage:
     python inference.py
 
 Required env vars:
-    NVIDIA_API_KEY — NVIDIA NIM API token
+    HF_TOKEN       — Hugging Face / API key  (replaces NVIDIA_API_KEY)
 
 Optional env vars:
-    API_BASE_URL   — LLM base URL            (default: https://integrate.api.nvidia.com/v1)
-    MODEL_NAME     — model to use            (default: deepseek-ai/deepseek-v3.1)
+    API_BASE_URL   — LLM base URL            (default: https://api-inference.huggingface.co/v1/)
+    MODEL_NAME     — model to use            (default: meta-llama/Llama-3.1-70B-Instruct)
     INCIDENT_TASK  — override task list      (default: run all 3)
     ENV_BASE_URL   — environment server URL  (default: http://localhost:7860)
 """
@@ -68,9 +68,9 @@ VALID_ACTIONS = [
 # Configuration from env vars
 # ──────────────────────────────────────────────
 
-MODEL_NAME = os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-70B-Instruct")
+HF_TOKEN = os.getenv("HF_TOKEN") or os.getenv("NVIDIA_API_KEY") # Backward compatibility
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api-inference.huggingface.co/v1/")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
 # ──────────────────────────────────────────────
@@ -108,6 +108,25 @@ Respond ONLY with valid JSON. No explanation. No markdown. Just the JSON object.
 # ──────────────────────────────────────────────
 # Helpers
 # ──────────────────────────────────────────────
+
+# ──────────────────────────────────────────────
+# Logging helper (strictly matching sample)
+# ──────────────────────────────────────────────
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: str | None = None) -> None:
+    # Handle both bool(True) and string("true") if needed, but sample uses bool
+    err_str = f" error={error}" if error and error != "null" else ""
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done}{err_str}", flush=True)
+
+
+def log_end(success: bool, steps: int, score: float, rewards: list[float]) -> None:
+    rewards_str = "[" + ",".join(f"{r:.2f}" for r in rewards) + "]"
+    print(f"[END] success={success} steps={steps} score={score:.4f} rewards={rewards_str}", flush=True)
+
 
 def _env_url(path: str) -> str:
     """Build full URL for the environment API."""
@@ -234,7 +253,7 @@ def run_episode(
     Returns: {task_name, score, steps, success, rewards}
     """
     # ── [START] ──
-    print(f"[START] task={task_name} env=incident-response-env model={MODEL_NAME}")
+    log_start(task=task_name, env="incident-response-env", model=MODEL_NAME)
 
     # Reset environment to this task
     obs = env.reset(task_name)
@@ -295,11 +314,7 @@ def run_episode(
             rewards.append(reward)
 
             # ── [STEP] log ──
-            print(
-                f"[STEP] step={step_n} action={action_str} "
-                f"reward={reward:.2f} done={'true' if done else 'false'} "
-                f"error={error_msg}"
-            )
+            log_step(step=step_n, action=action_str, reward=reward, done=done, error=error_msg if error_msg != "null" else None)
 
             # ── Feed observation back to LLM ──
             if not done:
@@ -316,18 +331,10 @@ def run_episode(
         except httpx.HTTPStatusError as exc:
             error_detail = exc.response.text[:200] if exc.response else str(exc)
             rewards.append(0.0)
-            print(
-                f"[STEP] step={step_n} action={action_str} "
-                f"reward=0.00 done=false "
-                f"error={error_detail}"
-            )
+            log_step(step=step_n, action=action_str, reward=0.00, done=False, error=error_detail)
         except Exception as exc:
             rewards.append(0.0)
-            print(
-                f"[STEP] step={step_n} action={action_str} "
-                f"reward=0.00 done=false "
-                f"error={str(exc)[:200]}"
-            )
+            log_step(step=step_n, action=action_str, reward=0.00, done=False, error=str(exc)[:200])
 
     # ── Calculate final score ──
     try:
@@ -358,12 +365,7 @@ def run_episode(
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
     # ── [END] ──
-    print(
-        f"[END] task={task_name} success={'true' if success else 'false'} "
-        f"steps={step_n} grader_score={grader_score:.3f} "
-        f"total_reward={total_reward:.2f} normalized={normalized:.3f} "
-        f"rewards={rewards_str}"
-    )
+    log_end(success=success, steps=step_n, score=grader_score, rewards=rewards)
 
     return {
         "task_name": task_name,
@@ -453,7 +455,7 @@ def main():
     print("=" * 65)
     print(f"  Model:      {MODEL_NAME}")
     print(f"  Env URL:    {ENV_BASE_URL}")
-    print(f"  NVIDIA Key: {'set' if NVIDIA_API_KEY else 'NOT SET'}")
+    print(f"  HF Token:   {'set' if HF_TOKEN else 'NOT SET'}")
     print("=" * 65)
     print()
 
@@ -468,12 +470,12 @@ def main():
     server_proc = _start_env_server()
 
     # ── Create clients ──
-    if not NVIDIA_API_KEY:
-        print("! WARNING: NVIDIA_API_KEY environment variable is not set.")
+    if not HF_TOKEN:
+        print("! WARNING: HF_TOKEN environment variable is not set.")
         print("! Inference will likely fail unless it's provided in the environment.")
         effective_key = "missing_api_key_placeholder"
     else:
-        effective_key = NVIDIA_API_KEY
+        effective_key = HF_TOKEN
 
     llm = OpenAI(
         base_url=API_BASE_URL,
