@@ -58,7 +58,7 @@ def _get_env() -> IncidentResponseEnv:
 async def lifespan(application: FastAPI):
     """Initialise the environment on startup, clean up on shutdown."""
     global _env
-    task_name = os.environ.get("INCIDENT_TASK", "single_service_failure")
+    task_name = os.environ.get("INCIDENT_TASK") or "single_service_failure"
     logger.info("Initialising environment with task: %s", task_name)
 
     try:
