@@ -42,7 +42,8 @@ load_dotenv()
 
 MAX_STEPS = 15
 TEMPERATURE = 0.3
-MAX_TOKENS = 300
+MAX_TOKENS = 512
+LLM_TIMEOUT = 60.0  # seconds
 SUCCESS_SCORE_THRESHOLD = 0.5
 
 ALL_TASKS = [
@@ -272,9 +273,10 @@ def run_episode(
                 messages=conversation,
                 temperature=0.2,
                 top_p=0.7,
-                max_tokens=8192,
-                extra_body={"chat_template_kwargs": {"thinking": True}},
+                max_tokens=MAX_TOKENS,
+                extra_body={"chat_template_kwargs": {"thinking": False}},
                 stream=True,
+                timeout=LLM_TIMEOUT,
             )
             raw_content = ""
             for chunk in completion:
