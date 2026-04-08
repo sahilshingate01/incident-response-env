@@ -259,9 +259,12 @@ async def root():
             <div class="demo-window">
                 <div class="demo-main">
                     <div id="term" class="terminal">// Select a task and click 'Start'...</div>
-                    <div class="stat-row">
-                        <span>Cumulative Reward</span>
-                        <span id="rew" class="reward-val">0.00</span>
+                    <div style="display:flex; justify-content:space-between; margin-bottom:10px;">
+                        <div style="display:flex; gap:15px;">
+                            <div style="font-size:0.75rem;"><span style="color:var(--text-secondary)">DIAGNOSED:</span> <span id="diag-stat" style="font-weight:800; color:var(--text-secondary)">NO</span></div>
+                            <div style="font-size:0.75rem;"><span style="color:var(--text-secondary)">RESOLVED:</span> <span id="res-stat" style="font-weight:800; color:var(--text-secondary)">NO</span></div>
+                        </div>
+                        <div style="font-size:0.8rem;"><span style="color:var(--text-secondary)">REWARD:</span> <span id="rew" class="reward-val">0.00</span></div>
                     </div>
                     <div class="progress-bg"><div id="p-bar" class="progress-fill"></div></div>
                 </div>
@@ -360,6 +363,8 @@ async def root():
         const rewEl = document.getElementById('rew');
         const pFill = document.getElementById('p-bar');
         const tgIn = document.getElementById('tg-in');
+        const diagStat = document.getElementById('diag-stat');
+        const resStat = document.getElementById('res-stat');
 
         function addLog(m, c='#22c55e'){
             const d = document.createElement('div');
@@ -383,6 +388,8 @@ async def root():
             const t = document.getElementById('t-sel').value;
             cTask = t; term.innerHTML = ""; score = 0; active = true;
             rewEl.innerText = "0.00"; pFill.style.width = "0%";
+            diagStat.innerText = "NO"; diagStat.style.color = "var(--text-secondary)";
+            resStat.innerText = "NO"; resStat.style.color = "var(--text-secondary)";
             addLog(`Initializing ${t}...`, '#888');
             try {
                 const r = await fetch(`${BASE}/reset/${t}`, {method:'POST'});
@@ -409,8 +416,18 @@ async def root():
                     if(d.reward!==0) addLog(`Reward: ${d.reward>0?'+':''}${d.reward}`, d.reward>0?'#22c55e':'#ef4444');
                     score += d.reward; rewEl.innerText = score.toFixed(2);
                     pFill.style.width = `${Math.min(100, Math.max(0, (score/1.5)*100))}%`;
+                    
+                    if(d.metadata.correctly_diagnosed) {
+                        diagStat.innerText = "YES ✅";
+                        diagStat.style.color = "var(--green)";
+                    }
+                    if(d.metadata.resolved) {
+                        resStat.innerText = "YES ✅";
+                        resStat.style.color = "var(--green)";
+                    }
+
                     await refresh();
-                    if(d.done){ active = false; addLog("RESOLVED", "#22c55e"); }
+                    if(d.done){ active = false; addLog("SESSION COMPLETE", "#22c55e"); }
                 } catch(e){ addLog(`Error: ${e.message}`, '#ef4444'); }
                 finally { b.disabled = false; tgIn.value = ""; }
             }
