@@ -362,7 +362,7 @@ class IncidentResponseEnv:
         # 6. Penalty for wrong first actions if defined (apply if taken before full diagnosis)
         if not self.correctly_diagnosed and self.scenario.wrong_first_actions:
             if self._match_scenario_action(action_key, self.scenario.wrong_first_actions):
-                reward -= 0.1
+                reward -= 0.15
                 reason = "Penalty for incorrect initial action"
 
         # Cap reward to Pydantic constraints [-1, 1]
@@ -557,7 +557,7 @@ if __name__ == "__main__":
     # ──────────────────────────────────────────
     task3_actions = [
         _make_action("check_all_services", None, "cascade_failure"),               # neutral (0.0)
-        _make_action("restart_service", "api-gateway", "cascade_failure"),          # wrong first (-0.1)
+        _make_action("restart_service", "api-gateway", "cascade_failure"),          # wrong first (-0.15)
         _make_action("check_metrics", "payment-service", "cascade_failure"),        # diagnosis 1/5 (+0.2)
         _make_action("check_metrics", "api-gateway", "cascade_failure"),            # diagnosis 2/5 (+0.2)
         _make_action("check_metrics", "db-primary", "cascade_failure"),             # diagnosis 3/5 (+0.2)
@@ -567,7 +567,7 @@ if __name__ == "__main__":
         _make_action("restart_service", "payment-service", "cascade_failure"),      # correct fix 2/3 (+0.3)
         _make_action("declare_resolved", None, "cascade_failure"),                 # correct fix 3/3 → resolved (+1.0)
     ]
-    task3_expected = [0.0, -0.1, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 1.0]
+    task3_expected = [0.0, -0.15, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 1.0]
     results.append(_run_test_episode("cascade_failure", task3_actions, task3_expected))
 
     # ──────────────────────────────────────────

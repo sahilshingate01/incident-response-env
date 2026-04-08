@@ -41,7 +41,7 @@ load_dotenv()
 # Constants
 # ──────────────────────────────────────────────
 
-MAX_STEPS = 12
+MAX_STEPS = 20
 TEMPERATURE = 0.3
 MAX_TOKENS = 512
 LLM_TIMEOUT = 120.0  # seconds
@@ -359,9 +359,8 @@ def run_episode(
             success = grader_score >= 0.5
 
     total_reward = sum(rewards)
-    # Normalize: sum of rewards divided by MAX_STEPS, clamped to (0.01, 0.99)
-    # OpenEnv Requirement: strictly between 0 and 1
-    normalized = max(0.01, min(0.99, total_reward / (MAX_STEPS or 1)))
+    # The [END] log uses the official grader score (0.01-0.99) from the /grade endpoint.
+    # Raw rewards are for behavior shaping and can exceed 1.0.
 
     # Build rewards string
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
@@ -375,7 +374,6 @@ def run_episode(
         "task_name": task_name,
         "score": round(grader_score, 4),
         "grader_score": round(grader_score, 4),
-        "normalized_score": round(normalized, 4),
         "steps": step_n,
         "success": success,
         "rewards": rewards,
