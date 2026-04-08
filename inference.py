@@ -40,7 +40,7 @@ load_dotenv()
 # Constants
 # ──────────────────────────────────────────────
 
-MAX_STEPS = 15
+MAX_STEPS = 12
 TEMPERATURE = 0.3
 MAX_TOKENS = 512
 LLM_TIMEOUT = 120.0  # seconds
@@ -68,7 +68,7 @@ VALID_ACTIONS = [
 # Configuration from env vars
 # ──────────────────────────────────────────────
 
-MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/deepseek-v3.1")
+MODEL_NAME = os.getenv("MODEL_NAME", "meta/llama-3.1-70b-instruct")
 NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 if not NVIDIA_API_KEY:
     raise ValueError("NVIDIA_API_KEY environment variable is missing")
@@ -275,15 +275,10 @@ def run_episode(
                 top_p=0.7,
                 max_tokens=MAX_TOKENS,
                 extra_body={"chat_template_kwargs": {"thinking": False}},
-                stream=True,
+                stream=False,
                 timeout=LLM_TIMEOUT,
             )
-            raw_content = ""
-            for chunk in completion:
-                if not getattr(chunk, "choices", None):
-                    continue
-                if chunk.choices[0].delta.content is not None:
-                    raw_content += chunk.choices[0].delta.content
+            raw_content = completion.choices[0].message.content or ""
 
             conversation.append({"role": "assistant", "content": raw_content})
 
