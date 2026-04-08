@@ -9,10 +9,11 @@ Usage:
     python inference.py
 
 Required env vars:
-    GROQ_API_KEY   — Groq API token
+    NVIDIA_API_KEY — NVIDIA NIM API token
 
 Optional env vars:
-    MODEL_NAME     — model to use            (default: llama-3.3-70b-versatile)
+    API_BASE_URL   — LLM base URL            (default: https://integrate.api.nvidia.com/v1)
+    MODEL_NAME     — model to use            (default: deepseek-ai/deepseek-v3.1)
     INCIDENT_TASK  — override task list      (default: run all 3)
     ENV_BASE_URL   — environment server URL  (default: http://localhost:7860)
 """
@@ -30,7 +31,7 @@ from typing import Any
 
 import httpx
 from dotenv import load_dotenv
-from groq import Groq
+from openai import OpenAI
 
 # Load environment variables from .env if it exists
 load_dotenv()
@@ -66,10 +67,11 @@ VALID_ACTIONS = [
 # Configuration from env vars
 # ──────────────────────────────────────────────
 
-MODEL_NAME = os.getenv("MODEL_NAME", "llama-3.3-70b-versatile")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-if not GROQ_API_KEY:
-    raise ValueError("GROQ_API_KEY environment variable is missing")
+MODEL_NAME = os.getenv("MODEL_NAME", "deepseek-ai/deepseek-v3.1")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+if not NVIDIA_API_KEY:
+    raise ValueError("NVIDIA_API_KEY environment variable is missing")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://integrate.api.nvidia.com/v1")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 
 # ──────────────────────────────────────────────
@@ -225,7 +227,7 @@ class EnvClient:
 
 def run_episode(
     task_name: str,
-    llm: Groq,
+    llm: OpenAI,
     env: EnvClient,
 ) -> dict:
     """
@@ -264,14 +266,23 @@ def run_episode(
         error_msg = "null"
 
         try:
-            # ── Call LLM ──
-            response = llm.chat.completions.create(
+            # ── Call LLM (NVIDIA NIM with streaming) ──
+            completion = llm.chat.completions.create(
                 model=MODEL_NAME,
                 messages=conversation,
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
+                temperature=0.2,
+                top_p=0.7,
+                max_tokens=8192,
+                extra_body={"chat_template_kwargs": {"thinking": True}},
+                stream=True,
             )
-            raw_content = response.choices[0].message.content or ""
+            raw_content = ""
+            for chunk in completion:
+                if not getattr(chunk, "choices", None):
+                    continue
+                if chunk.choices[0].delta.content is not None:
+                    raw_content += chunk.choices[0].delta.content
+
             conversation.append({"role": "assistant", "content": raw_content})
 
             # ── Parse action ──
@@ -436,9 +447,9 @@ def main():
     print("=" * 65)
     print("  Incident Response Environment — Inference Runner")
     print("=" * 65)
-    print(f"  Model:     {MODEL_NAME}")
-    print(f"  Env URL:   {ENV_BASE_URL}")
-    print(f"  Groq Key:  {'set' if GROQ_API_KEY else 'NOT SET'}")
+    print(f"  Model:      {MODEL_NAME}")
+    print(f"  Env URL:    {ENV_BASE_URL}")
+    print(f"  NVIDIA Key: {'set' if NVIDIA_API_KEY else 'NOT SET'}")
     print("=" * 65)
     print()
 
@@ -453,8 +464,9 @@ def main():
     server_proc = _start_env_server()
 
     # ── Create clients ──
-    llm = Groq(
-        api_key=GROQ_API_KEY,
+    llm = OpenAI(
+        base_url=API_BASE_URL,
+        api_key=NVIDIA_API_KEY,
     )
     env = EnvClient()
 
