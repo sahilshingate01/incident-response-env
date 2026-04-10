@@ -15,270 +15,209 @@ tags:
 license: mit
 ---
 
-# 🚨 Incident Response Environment
+# 🚨 AI SRE Agent — Live Incident Response
 
-**Evaluate AI agents on realistic production incident response with advanced reasoning support.**
+> **Production is down. $5,600 per minute is bleeding.** An AI agent just diagnosed a cascading failure across 4 services, identified a deadlocked database connection pool as root cause, and fixed everything in 9 steps — without waking anyone up.
 
+**An RL/LLM benchmark environment where AI agents autonomously diagnose and remediate production incidents across a 5-service microservice architecture.**
+
+[![Live Demo](https://img.shields.io/badge/🔴_Live_Demo-Watch_It_Happen-red?style=for-the-badge)](https://huggingface.co/spaces/Sahilshingate/incident-response-env)
 [![OpenEnv Compatible](https://img.shields.io/badge/OpenEnv-Compatible-blue?style=flat-square)](https://github.com/OpenEnv-AI/openenv)
-[![NVIDIA NIM](https://img.shields.io/badge/NVIDIA-NIM-green?style=flat-square&logo=nvidia)](https://www.nvidia.com/en-us/ai-data-science/generative-ai/nim/)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-green?style=flat-square&logo=python)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 ---
 
-## ⚡ Better Reasoning for Ops
+## ⚡ The Numbers
 
-Modern production incidents aren't solved by simple keyword matching—they require deep, multi-hop deductive reasoning. **Incident Response Environment** is built to challenge the next generation of **Large Reasoning Models (LRMs)**. 
-
-Whether using DeepSeek-R1's internal chain-of-thought or OpenAI's o1-series, this environment captures the true complexity of SRE:
-- **Trace Correlation**: Agents must correlate errors across 5 microservices using realistic trace IDs.
-- **Hypothesis Testing**: Deterministic logs and metrics allow agents to test hypotheses about root causes.
-- **Anti-Hacking Trajectories**: Built-in graders penalize "lucky guessing" and reward agents that follow rigorous investigative methodology.
-- **NVIDIA NIM Integration**: Baseline scripts are optimized for NVIDIA NIM, supporting high-throughput evaluation of frontier models like Llama 3.1 405B and DeepSeek-V3.
-
----
-
-## Overview
-
-Production outages cost $5,600 per minute. This autonomous AI agent recovers revenue by diagnosing and remediating incidents in seconds. From single bad deploys to complex database latency and full cascade failures, the system replaces manual 3 AM intervention with precise, automated resolution across microservice architectures.
+| Metric | Value |
+|---|---|
+| **Incident types** | 3 (Easy → Medium → Hard) |
+| **Services simulated** | 5 microservices |
+| **Agent actions available** | 9 types |
+| **Optimal Task 1 reward** | +1.70 (5 steps) |
+| **Optimal Task 3 reward** | +2.60 (9 steps) |
+| **Time to resolve (cascade)** | 9 steps, ~14 seconds |
 
 ---
 
-## Results at a Glance
+## 🎬 Watch It Happen
 
-| Task | Difficulty | Steps | Total Reward | Success |
-|---|---|---|---|---|
-| Single Service Failure | Easy | 4-5 steps | +1.70 | ✅ |
-| Database Latency Cascade | Medium | 7 steps | +1.90 | ✅ |
-| Full Cascade Failure | Hard | 12 steps | +1.50 | ✅ |
+**[▶ Launch the Live Demo](https://huggingface.co/spaces/Sahilshingate/incident-response-env)** — no login, no API key, one click.
 
-These results demonstrate a significant reduction in Mean Time To Recovery (MTTR) through autonomous resolution. By removing the need for human intervention, the agent ensures system stability and minimizes financial impact during critical infrastructure failures.
+Hit **TRIGGER INCIDENT** and watch an AI SRE agent:
+1. 🚨 Receive a cascading failure alert across 4 services
+2. 🔍 Systematically investigate metrics, logs, and DB queries
+3. 🧠 Reason through deceptive signals to find the real root cause
+4. 🔧 Apply fixes in the correct order (DB → payment-service)
+5. ✅ Resolve the incident — all services flip from red to green
+
+The demo runs a hardcoded optimal agent so you see the **perfect trajectory** every time. Plug in your own LLM to see how it performs.
 
 ---
 
-## Environment Design
+## 🧠 Why This Is Hard
 
-### Architecture
+This isn't "find the red service and restart it." These incidents require **multi-hop deductive reasoning**:
+
+### Deceptive Signals
+`api-gateway` error rate hits 67% — but it's a **symptom**, not the cause. Agents that restart the gateway waste a step and get penalized. The real root cause is a deadlocked `db-primary` connection pool two layers down.
+
+### Fix Ordering Matters
+In the cascade failure, you **must** restart `db-primary` before `payment-service`. Reversing the order re-exhausts the connection pool and makes things worse. The environment penalizes wrong-order fixes.
+
+### Penalty Traps
+- Restarting `payment-service` before diagnosing? **-0.15** penalty
+- Declaring resolved prematurely? **-0.20** penalty
+- Repeating actions? **-0.05** per duplicate
+- The optimal path requires reading signals across 5 services, correlating slow queries with connection pools, and applying fixes in strict dependency order
+
+---
+
+## 🏗️ Architecture
 
 ```
-┌─────────────┐     POST /step      ┌──────────────────────────────────┐
-│   AI Agent   │ ──────────────────► │   Incident Response Environment  │
-│  (LLM/RL)    │ ◄────────────────── │                                  │
-└─────────────┘   IncidentObservation│  ┌────────────┐ ┌─────────────┐  │
-                                     │  │ FakeMetrics │ │  FakeLogs   │  │
-                                     │  └────────────┘ └─────────────┘  │
-                                     │  ┌────────────┐ ┌─────────────┐  │
-                                     │  │FakeDeploys │ │  Scenarios  │  │
-                                     │  └────────────┘ └─────────────┘  │
-                                     └──────────────────────────────────┘
+┌─────────────────┐    POST /step     ┌──────────────────────────────────┐
+│    AI Agent      │ ────────────────► │  Incident Response Environment   │
+│   (LLM / RL)    │ ◄──────────────── │                                  │
+└─────────────────┘  IncidentObs      │  ┌────────────┐ ┌─────────────┐  │
+                                      │  │ FakeMetrics │ │  FakeLogs   │  │
+  ┌─────────────────┐                 │  └────────────┘ └─────────────┘  │
+  │  Live Dashboard  │  SSE Stream    │  ┌────────────┐ ┌─────────────┐  │
+  │  (index.html)    │ ◄──────────── │  │FakeDeploys │ │  Scenarios  │  │
+  └─────────────────┘  /demo/run      │  └────────────┘ └─────────────┘  │
+                                      └──────────────────────────────────┘
 ```
 
-### Observation Space
+**Services simulated:** `api-gateway` · `payment-service` · `user-service` · `db-primary` · `cache-redis`
 
-After every action (and on `reset()`), the agent receives an `IncidentObservation`:
-
-| Field | Type | Description |
-|---|---|---|
-| `observation_text` | `string` | Human-readable output from the last action (log lines, metrics, deploy info) |
-| `services_summary` | `object` | Current status of all 5 services: `{service: {status, error_rate, latency_p99_ms}}` |
-| `available_actions` | `list[string]` | Human-readable hints for valid actions the agent can take |
-| `step_count` | `int` | Current step number in the episode |
-| `incident_description` | `string` | The original incident scenario description |
-| `done` | `bool` | Whether the episode has ended |
-| `reward` | `float` | Reward received for the last action |
-| `metadata` | `object` | Episode ID, cumulative reward, diagnosis state, reward reasoning |
-
-**Services simulated:** `api-gateway`, `payment-service`, `user-service`, `db-primary`, `cache-redis`
-
-Each service reports a status of `healthy`, `degraded`, or `critical` based on its error rate and p99 latency.
-
-#### Logs and Temporal Flow
-
-To enhance realism, observations evolve across steps (temporal flow) instead of being static snapshots. Logs proactively returned by the environment include:
-- Identifiable **timestamps** (in ISO format) showing events evolving over time.
-- Distinct **log levels** (INFO, WARN, ERROR).
-- Standardized `trace_id` / `request_id` markers to correlate traces.
-- Partial **stack traces** on key application errors.
-
-The environment challenges the agent to filter signal from noise by regularly injecting **30–50% irrelevant noise logs** containing unrelated service logs and benign warnings into the observations.
+Each service reports: `status` (healthy/degraded/critical), `error_rate`, `latency_p99_ms`
 
 ---
 
-### Action Space
-
-The agent sends an `IncidentAction` JSON with `action_type`, `target`, and `task_name`:
-
-| Action | Target | Description | Example |
-|---|---|---|---|
-| `read_logs` | service name | Read the last 15 log lines from a service | `{"action_type": "read_logs", "target": "user-service", "task_name": "..."}` |
-| `check_metrics` | service name | Get error rate, latency, CPU, memory, RPS for a service | `{"action_type": "check_metrics", "target": "db-primary", "task_name": "..."}` |
-| `check_all_services` | `null` | Get a status overview of all 5 services | `{"action_type": "check_all_services", "target": null, "task_name": "..."}` |
-| `check_recent_deploys` | `null` | List recent deployments (last 24h) with timestamps and authors | `{"action_type": "check_recent_deploys", "target": null, "task_name": "..."}` |
-| `check_db_queries` | `null` | View the slow query log (last 30 min) | `{"action_type": "check_db_queries", "target": null, "task_name": "..."}` |
-| `rollback` | deploy ID | Roll back a specific deployment | `{"action_type": "rollback", "target": "dep-evil-123", "task_name": "..."}` |
-| `restart_service` | service name | Restart a service | `{"action_type": "restart_service", "target": "db-primary", "task_name": "..."}` |
-| `scale_up` | service name | Scale a service from 3 to 6 replicas | `{"action_type": "scale_up", "target": "db-primary", "task_name": "..."}` |
-| `declare_resolved` | `null` | Mark the incident as resolved (terminal action if correct) | `{"action_type": "declare_resolved", "target": null, "task_name": "..."}` |
-
----
-
-### Reward Function
-
-The reward function shapes behavior by deeply rewarding thorough diagnosis *before* any action is taken. The environment implements a continuous dense reward tied to its internal state tracking mechanism.
-
-**Diagnostic Rewards:**
-- **+0.2** for a correct intermediate diagnostic step
-- **+0.1** for a partially useful step
-- **0.0** for neutral evaluation
-- **-0.05** for duplicate actions
-- **-0.1** for an irrelevant step
-
-**Action & Resolution Rewards:**
-- **+0.3** for a correct final fix AFTER proper diagnosis
-- **+0.2** for a correct fix applied without full diagnosis
-- **+1.0** for successful resolution declaration
-- **-0.2** for an incorrect or harmful action or premature resolution.
-
----
-
-## Tasks
+## 📋 Tasks
 
 ### Task 1 — Single Service Failure (Easy)
-**Scenario:** A bad deploy to `user-service` is causing 500 errors.
-- **Reasoning**: Detect direct correlation between a deployment timestamp and an error spike.
-- **Required**: `check_recent_deploys` → `read_logs` → `rollback`.
+A bad deploy to `user-service` is causing 500 errors.
+- **Key insight:** Direct correlation between deploy timestamp and error spike
+- **Optimal path:** `check_recent_deploys` → `read_logs` → `rollback` → `declare_resolved`
+- **Optimal reward:** +1.70
 
 ### Task 2 — Database Latency Cascade (Medium)
-**Scenario:** DB overload causing API latency to cascade.
-- **Reasoning**: Multi-hop latency tracing from Gateway → Downstream → Database.
-- **Required**: Correlate high p99 latency with slow query logs and scale up.
+DB overload causing API latency to cascade across services.
+- **Key insight:** Multi-hop latency tracing from Gateway → Downstream → Database
+- **Optimal path:** `check_metrics(api-gateway)` → `check_metrics(db-primary)` → `check_db_queries` → `scale_up(db-primary)` → `declare_resolved`
+- **Optimal reward:** +1.90
 
 ### Task 3 — Full Cascade Failure (Hard)
-**Scenario:** DB connection pool exhaustion triggering a cascade.
-- **Reasoning**: **Non-linear root cause**. Root cause is invisible at the initial layer.
-- **Required**: Complex investigative trajectory (5+ steps) and strictly ordered remediation.
+DB connection pool exhaustion triggering cascading failure across 4 services.
+- **Key insight:** Non-linear root cause — root cause is invisible at the initial layer
+- **Optimal path:** 5 diagnostic steps → `restart_service(db-primary)` → `restart_service(payment-service)` → `declare_resolved`
+- **Optimal reward:** +2.60
 
 ---
 
-## Trajectory Grader
+## 🎯 Reward Function
 
-The environment utilizes a dedicated, bulletproof grade implementation:
-- **Deterministic scoring:** Identical trajectories produce identical scores.
-- **Evaluates full trajectory:** Grading occurs over sequential history actions.
-- **Prevents skipping diagnosis:** Directly guessing the resolution action before proper validation will flag an anti-hack sequence.
-- **Prevents reward hacking:** Triggers a rigid cap score reduction (to `0.3`) if shortcut validation paths are identified.
-
----
-
-## Baseline Scores
-
-All baselines measured using `inference.py` (optimized for NVIDIA NIM).
-
-> **Understanding the Metrics**
-> - **Grader Score (Primary):** Official evaluation metric (0.0–1.0) derived from trajectory coverage.
-> - **Total Reward (Secondary):** Raw sum of rewards accumulated during the episode.
-> 
-> *Note on Normalization: The **Grader Score** is the deterministic measure of investigative quality. You may notice low "normalized rewards" (reward/steps) in some logs; this is expected as high-quality SRE trajectories prioritize thoroughness over raw speed. **Total Reward** is the most accurate reflection of task resolution success.*
-
-| Task | Model | Grader Score | Pass? | Steps | Total Reward |
-|---|---|---|---|---|---|
-| `single_service_failure` | DeepSeek-V3.1 | **0.900** | ✅ | 9 | +1.60 |
-| `database_latency` | DeepSeek-V3.1 | **0.617** | ✅ | 15 | +0.25 |
-| `cascade_failure` | Llama 3.1 70B | **0.450** | ⚠️ | 12 | +0.80 |
-
----
-
-## Pre-Submission Validation
-
-Before submitting your environment to the OpenEnv Hub, run these validation steps to ensure your submission passes all automated checks.
-
-### 📋 Validation Checklist
-| Check | Requirement | Status |
+| Category | Reward | Description |
 |---|---|---|
-| **Port Exposure** | Container listens on port `7860` | 🟢 |
-| **Task Registration** | `/tasks` returns 3 valid tasks | 🟢 |
-| **Logic Consistency** | `python environment.py` passes all test episodes | 🟢 |
-| **Inference Baseline** | `inference.py` produces `[END]` log lines for all tasks | 🟢 |
-| **Key Handling** | System handles missing `NVIDIA_API_KEY` without crashing | 🟢 |
-
-### 🛠️ Verification Commands
-
-```bash
-# 1. Run the deterministic environment test harness
-python environment.py
-
-# 2. Check task registration metadata
-curl http://localhost:7860/tasks
-
-# 3. Verify the inference script (dry-run)
-python inference.py
-```
+| ✅ Correct diagnosis step | **+0.20** | Each correct investigative action |
+| 🔧 Correct fix (after diagnosis) | **+0.30** | Right remediation after proper investigation |
+| 🔧 Correct fix (no diagnosis) | **+0.20** | Lucky guess, reduced reward |
+| 🎉 Successful resolution | **+1.00** | All fixes applied, incident resolved |
+| ⚠️ Duplicate action | **-0.05** | Repeating a previous action |
+| ❌ Wrong first action | **-0.15** | Penalty for incorrect initial remediation |
+| ❌ Premature resolution | **-0.20** | Declaring resolved while issues persist |
 
 ---
 
-## Setup & Usage
+## 🔌 API Reference
 
-### 🚀 Quick Start (with `uv`)
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/` | **Live demo dashboard** |
+| `GET` | `/health` | Health check |
+| `GET` | `/tasks` | List available tasks |
+| `POST` | `/reset` | Reset current task |
+| `POST` | `/reset/{task_name}` | Switch task and reset |
+| `POST` | `/step` | Execute one action |
+| `GET` | `/state` | Get internal state |
+| `POST` | `/grade` | Grade current episode |
+| `POST` | `/demo/run?task={name}` | **SSE stream — live demo** |
+| `GET` | `/demo/tasks` | Task metadata for UI |
+| `GET` | `/docs` | Swagger API docs |
 
-The project is optimized for [uv](https://github.com/astral-sh/uv).
+---
+
+## 🚀 Quick Start
+
+### Run Locally
 
 ```bash
-# 1. generate lockfile and sync
-uv lock
-uv sync
+# Clone
+git clone https://github.com/sahilshingate01/incident-response-env.git
+cd incident-response-env
 
-# 2. Start the OpenEnv server
-uv run server
-
-# 3. (In another terminal) Run inference (NVIDIA NIM)
-export NVIDIA_API_KEY="your-key"
-uv run python inference.py
-```
-
-### Local Development (Standard Pip)
-
-```bash
+# Install dependencies
 pip install -r requirements.txt
-python -m server.app
+
+# Start the server
+python -m uvicorn server.app:app --host 0.0.0.0 --port 7860
+
+# Open http://localhost:7860 for the live demo
 ```
 
-### Docker
+### With Docker
 
 ```bash
 docker build -t incident-env .
 docker run -p 7860:7860 incident-env
 ```
 
----
+### Run Inference (with your own LLM)
 
-## API Reference
-
-| Method | Path | Description | Request Body | Response |
-|---|---|---|---|---|
-| `GET` | `/health` | Health check | — | `{status, task, episode_id}` |
-| `GET` | `/tasks` | List all available tasks | — | `[{name, difficulty, description}]` |
-| `POST` | `/reset` | Reset current task | — | `IncidentObservation` |
-| `POST` | `/reset/{task_name}` | Switch to a different task and reset | — | `IncidentObservation` |
-| `POST` | `/step` | Execute one action | `IncidentAction` | `IncidentObservation` |
-| `GET` | `/state` | Get internal state snapshot | — | `IncidentState` |
-| `POST` | `/grade` | Grade the current episode | `{task_name: string}` | `{score, max_score, breakdown, passed}` |
+```bash
+export API_KEY="your-api-key"
+export API_BASE_URL="https://api-inference.huggingface.co/v1/"
+python inference.py
+```
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 incident-response-env/
-├── Dockerfile          # python:3.11-slim, port 7860
-├── openenv.yaml        # OpenEnv registration & task config
-├── pyproject.toml      # PEP 621 metadata & uv config
-├── uv.lock             # Deterministic dependency lockfile
-├── server/             # FastAPI entry point & graders
-├── data/               # Deterministic data engines (Logs/Metrics)
-├── environment.py      # Core RL Environment logic (Step/Reset)
-├── models.py           # Pydantic schema definitions
-└── inference.py        # NVIDIA NIM reasoning baseline
+├── server/
+│   ├── app.py              # FastAPI server & endpoints
+│   ├── demo_routes.py      # SSE streaming demo endpoint
+│   └── graders.py          # Trajectory grading logic
+├── src/static/
+│   └── index.html          # Live demo dashboard (single file, no build)
+├── data/
+│   ├── fake_metrics.py     # Deterministic metrics engine
+│   ├── fake_logs.py        # Deterministic log engine
+│   ├── fake_deploys.py     # Deterministic deploy history
+│   └── incident_scenarios.py  # Task definitions
+├── environment.py          # Core RL environment (step/reset)
+├── models.py               # Pydantic schemas
+├── demo_agent.py           # Hardcoded optimal agent for demos
+├── inference.py            # LLM inference runner
+├── Dockerfile              # python:3.11-slim, port 7860
+└── openenv.yaml            # OpenEnv registration
 ```
+
+---
+
+## 📊 Baseline Scores
+
+| Task | Model | Grader Score | Steps | Total Reward |
+|---|---|---|---|---|
+| `single_service_failure` | DeepSeek-V3.1 | **0.900** | 9 | +1.60 |
+| `database_latency` | DeepSeek-V3.1 | **0.617** | 15 | +0.25 |
+| `cascade_failure` | Llama 3.1 70B | **0.450** | 12 | +0.80 |
+
+**Demo agent (hardcoded optimal):** Task 1: +1.70 | Task 2: +1.90 | Task 3: +2.60
 
 ---
 

@@ -1,0 +1,1281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI SRE Agent — Live Incident Response</title>
+    <meta name="description" content="Watch an AI agent autonomously detect and fix production outages in real-time across a 5-service microservice architecture.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* ═══════════════════════════════════════════
+           Design System
+           ═══════════════════════════════════════════ */
+        :root {
+            --bg-deepest: #06080c;
+            --bg-deep: #0a0e17;
+            --bg-surface: #0f1520;
+            --bg-card: #141b2a;
+            --bg-card-hover: #1a2236;
+            --bg-elevated: #1e2840;
+
+            --border-subtle: rgba(255, 255, 255, 0.06);
+            --border-default: rgba(255, 255, 255, 0.1);
+            --border-strong: rgba(255, 255, 255, 0.15);
+
+            --text-primary: #e8ecf4;
+            --text-secondary: #7b8ba4;
+            --text-tertiary: #4a5568;
+            --text-muted: #3a4560;
+
+            --red: #ef4444;
+            --red-dim: rgba(239, 68, 68, 0.15);
+            --red-glow: rgba(239, 68, 68, 0.4);
+            --orange: #f59e0b;
+            --orange-dim: rgba(245, 158, 11, 0.15);
+            --green: #22c55e;
+            --green-dim: rgba(34, 197, 94, 0.15);
+            --green-glow: rgba(34, 197, 94, 0.4);
+            --blue: #3b82f6;
+            --blue-dim: rgba(59, 130, 246, 0.15);
+            --blue-glow: rgba(59, 130, 246, 0.3);
+            --purple: #a78bfa;
+            --purple-dim: rgba(167, 139, 250, 0.15);
+            --cyan: #22d3ee;
+
+            --font-sans: 'Inter', -apple-system, sans-serif;
+            --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 14px;
+            --radius-xl: 20px;
+
+            --shadow-glow-red: 0 0 30px rgba(239, 68, 68, 0.15);
+            --shadow-glow-green: 0 0 30px rgba(34, 197, 94, 0.15);
+            --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.3);
+
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-smooth: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-bounce: 500ms cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* ═══════════════════════════════════════════
+           Reset & Base
+           ═══════════════════════════════════════════ */
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg-deepest);
+            color: var(--text-primary);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ═══════════════════════════════════════════
+           Animations
+           ═══════════════════════════════════════════ */
+        @keyframes pulse-red {
+            0%, 100% { box-shadow: 0 0 0 0 var(--red-glow); }
+            50% { box-shadow: 0 0 20px 4px var(--red-glow); }
+        }
+        @keyframes pulse-green {
+            0%, 100% { box-shadow: 0 0 0 0 var(--green-glow); }
+            50% { box-shadow: 0 0 20px 4px var(--green-glow); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(12px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes typewriter {
+            from { opacity: 0; transform: translateX(-4px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes dotPulse {
+            0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
+            40% { opacity: 1; transform: scale(1.2); }
+        }
+        @keyframes borderGlow {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.3); }
+            50% { border-color: rgba(239, 68, 68, 0.6); }
+        }
+        @keyframes celebrateGlow {
+            0% { box-shadow: 0 0 20px var(--green-glow); }
+            50% { box-shadow: 0 0 60px var(--green-glow), 0 0 100px rgba(34, 197, 94, 0.1); }
+            100% { box-shadow: 0 0 20px var(--green-glow); }
+        }
+        @keyframes countUp {
+            from { opacity: 0; transform: scale(0.5); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes scanline {
+            0% { top: -6px; }
+            100% { top: 100%; }
+        }
+
+        .animate-in { animation: fadeInUp 0.4s ease-out forwards; }
+
+        /* ═══════════════════════════════════════════
+           Top Banner
+           ═══════════════════════════════════════════ */
+        #top-banner {
+            background: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-deepest) 100%);
+            border-bottom: 1px solid var(--border-subtle);
+            padding: 16px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            backdrop-filter: blur(12px);
+        }
+
+        .banner-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .banner-logo {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--red) 0%, #dc2626 100%);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .banner-title {
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            color: #fff;
+        }
+        .banner-subtitle {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-weight: 500;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+
+        .banner-center {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .scenario-select {
+            background: var(--bg-card);
+            border: 1px solid var(--border-default);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 500;
+            padding: 8px 14px;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            outline: none;
+            transition: var(--transition-fast);
+            min-width: 200px;
+        }
+        .scenario-select:hover { border-color: var(--border-strong); }
+        .scenario-select:focus { border-color: var(--blue); box-shadow: 0 0 0 3px var(--blue-dim); }
+
+        .trigger-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 22px;
+            background: linear-gradient(135deg, #dc2626 0%, var(--red) 100%);
+            color: white;
+            border: none;
+            border-radius: var(--radius-sm);
+            font-family: var(--font-sans);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: var(--transition-smooth);
+            letter-spacing: 0.02em;
+            text-transform: uppercase;
+        }
+        .trigger-btn:hover:not(:disabled) {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(239, 68, 68, 0.3);
+        }
+        .trigger-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .trigger-btn.running {
+            background: linear-gradient(135deg, var(--orange) 0%, #d97706 100%);
+            pointer-events: none;
+        }
+
+        .banner-right {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        #resolution-banner {
+            display: none;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.05));
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: var(--radius-md);
+            padding: 8px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--green);
+            animation: slideDown 0.5s ease-out;
+            white-space: nowrap;
+        }
+
+        .live-indicator {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .live-dot {
+            width: 7px;
+            height: 7px;
+            background: var(--green);
+            border-radius: 50%;
+            animation: pulse-green 2s infinite;
+        }
+        .live-dot.alert {
+            background: var(--red);
+            animation: pulse-red 1.5s infinite;
+        }
+
+        /* ═══════════════════════════════════════════
+           Main Layout — 3 Panel Grid
+           ═══════════════════════════════════════════ */
+        #main-grid {
+            display: grid;
+            grid-template-columns: 280px 1fr 300px;
+            height: calc(100vh - 65px);
+            overflow: hidden;
+        }
+
+        .panel {
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .panel:last-child { border-right: none; }
+
+        .panel-header {
+            padding: 16px 18px 12px;
+            border-bottom: 1px solid var(--border-subtle);
+            flex-shrink: 0;
+        }
+        .panel-header h2 {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+        }
+
+        .panel-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 14px;
+        }
+
+        /* Scrollbar styling */
+        .panel-body::-webkit-scrollbar { width: 5px; }
+        .panel-body::-webkit-scrollbar-track { background: transparent; }
+        .panel-body::-webkit-scrollbar-thumb { background: var(--bg-elevated); border-radius: 3px; }
+
+        /* ═══════════════════════════════════════════
+           Left Panel — System Status Dashboard
+           ═══════════════════════════════════════════ */
+        .service-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 14px 16px;
+            margin-bottom: 10px;
+            transition: var(--transition-smooth);
+            position: relative;
+            overflow: hidden;
+        }
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--green);
+            transition: var(--transition-smooth);
+        }
+        .service-card.critical::before { background: var(--red); }
+        .service-card.degraded::before { background: var(--orange); }
+        .service-card.healthy::before { background: var(--green); }
+
+        .service-card.critical {
+            border-color: rgba(239, 68, 68, 0.2);
+            animation: pulse-red 3s infinite;
+        }
+        .service-card.degraded {
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+        .service-card.healthy {
+            border-color: rgba(34, 197, 94, 0.15);
+        }
+
+        /* Celebration state */
+        .service-card.resolved {
+            animation: celebrateGlow 2s ease-in-out;
+            border-color: rgba(34, 197, 94, 0.4);
+        }
+
+        .svc-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .svc-name {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .svc-badge {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 99px;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+        }
+        .svc-badge.critical { background: var(--red-dim); color: var(--red); }
+        .svc-badge.degraded { background: var(--orange-dim); color: var(--orange); }
+        .svc-badge.healthy { background: var(--green-dim); color: var(--green); }
+
+        .svc-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+        }
+        .svc-metric {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .svc-metric-label {
+            font-size: 9px;
+            font-weight: 600;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .svc-metric-value {
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: var(--transition-smooth);
+        }
+        .svc-metric-value.bad { color: var(--red); }
+        .svc-metric-value.warn { color: var(--orange); }
+        .svc-metric-value.good { color: var(--green); }
+
+        /* ═══════════════════════════════════════════
+           Center Panel — Agent Activity Feed
+           ═══════════════════════════════════════════ */
+        #center-panel { background: var(--bg-deep); }
+        #center-panel .panel-body { padding: 0; }
+
+        .activity-feed {
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+
+        /* Idle / initial state */
+        #idle-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            gap: 16px;
+            padding: 40px;
+            text-align: center;
+        }
+        .idle-icon {
+            font-size: 48px;
+            opacity: 0.4;
+        }
+        .idle-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text-secondary);
+        }
+        .idle-desc {
+            font-size: 13px;
+            color: var(--text-tertiary);
+            max-width: 320px;
+            line-height: 1.6;
+        }
+
+        /* Alert banner inside feed */
+        .alert-entry {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.08), rgba(239, 68, 68, 0.03));
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            border-radius: var(--radius-md);
+            padding: 16px 18px;
+            margin-bottom: 16px;
+            animation: fadeInUp 0.4s ease-out;
+        }
+        .alert-entry .alert-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            font-weight: 800;
+            color: var(--red);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            margin-bottom: 8px;
+        }
+        .alert-entry .alert-text {
+            font-size: 13px;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        /* Step entry */
+        .step-entry {
+            position: relative;
+            padding: 14px 16px 14px 46px;
+            border-bottom: 1px solid var(--border-subtle);
+            animation: fadeInUp 0.35s ease-out;
+        }
+        .step-entry:last-child { border-bottom: none; }
+
+        /* Vertical timeline connector */
+        .step-entry::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border-subtle);
+        }
+        .step-entry:last-child::before { bottom: 50%; }
+
+        .step-number {
+            position: absolute;
+            left: 12px;
+            top: 16px;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: 800;
+            z-index: 1;
+        }
+        .step-number.investigate { background: var(--blue-dim); color: var(--blue); border: 1.5px solid var(--blue); }
+        .step-number.fix { background: var(--orange-dim); color: var(--orange); border: 1.5px solid var(--orange); }
+        .step-number.resolve { background: var(--green-dim); color: var(--green); border: 1.5px solid var(--green); }
+
+        .step-action-line {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        .step-action-name {
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+        .step-action-target {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+        .step-reward {
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 4px;
+            margin-left: auto;
+        }
+        .step-reward.positive { background: var(--green-dim); color: var(--green); }
+        .step-reward.negative { background: var(--red-dim); color: var(--red); }
+        .step-reward.neutral { background: rgba(255,255,255,0.05); color: var(--text-secondary); }
+
+        .step-reasoning {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.5;
+            margin-top: 6px;
+            padding-left: 2px;
+            font-style: italic;
+            opacity: 0;
+            animation: fadeIn 0.6s ease-out 0.2s forwards;
+        }
+
+        .step-observation {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            color: var(--text-tertiary);
+            line-height: 1.4;
+            margin-top: 8px;
+            padding: 8px 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: var(--radius-sm);
+            max-height: 80px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        /* Thinking indicator */
+        .thinking-entry {
+            padding: 12px 16px 12px 46px;
+            position: relative;
+            animation: fadeInUp 0.3s ease-out;
+        }
+        .thinking-entry::before {
+            content: '';
+            position: absolute;
+            left: 20px;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background: var(--border-subtle);
+        }
+        .thinking-dots {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .thinking-dots span {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        .thinking-dot {
+            width: 6px;
+            height: 6px;
+            background: var(--blue);
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .thinking-dot:nth-child(1) { animation: dotPulse 1.4s infinite 0s; }
+        .thinking-dot:nth-child(2) { animation: dotPulse 1.4s infinite 0.2s; }
+        .thinking-dot:nth-child(3) { animation: dotPulse 1.4s infinite 0.4s; }
+
+        .thinking-text {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-top: 6px;
+            padding-left: 2px;
+            line-height: 1.5;
+        }
+
+        /* ═══════════════════════════════════════════
+           Right Panel — Incident Timeline
+           ═══════════════════════════════════════════ */
+        #right-panel {
+            background: var(--bg-surface);
+        }
+
+        /* Score display */
+        .score-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-bottom: 14px;
+            text-align: center;
+        }
+        .score-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 6px;
+        }
+        .score-value {
+            font-family: var(--font-mono);
+            font-size: 36px;
+            font-weight: 800;
+            color: var(--text-primary);
+            transition: var(--transition-smooth);
+            line-height: 1;
+        }
+        .score-value.positive { color: var(--green); }
+        .score-max {
+            font-size: 14px;
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        /* Progress bar */
+        .progress-container {
+            margin-top: 12px;
+        }
+        .progress-bar-bg {
+            height: 5px;
+            background: rgba(255, 255, 255, 0.06);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--green), var(--cyan));
+            border-radius: 3px;
+            transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .progress-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 6px;
+            font-size: 10px;
+            color: var(--text-tertiary);
+            font-weight: 500;
+        }
+
+        /* Timeline */
+        .timeline {
+            display: flex;
+            flex-direction: column;
+            gap: 0;
+        }
+        .timeline-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            padding: 10px 0;
+            position: relative;
+            animation: fadeInUp 0.35s ease-out;
+        }
+
+        .timeline-icon {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            flex-shrink: 0;
+            position: relative;
+            z-index: 1;
+        }
+
+        /* Timeline connector line */
+        .timeline-item:not(:last-child) .timeline-icon::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 2px;
+            height: calc(100% + 10px);
+            background: var(--border-subtle);
+        }
+
+        .timeline-icon.alert { background: var(--red-dim); }
+        .timeline-icon.investigate { background: var(--blue-dim); }
+        .timeline-icon.fix { background: var(--orange-dim); }
+        .timeline-icon.resolve { background: var(--green-dim); }
+        .timeline-icon.pending { background: rgba(255,255,255,0.05); }
+
+        .timeline-content {
+            flex: 1;
+            min-width: 0;
+        }
+        .timeline-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+        .timeline-desc {
+            font-size: 11px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+        .timeline-reward {
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 700;
+            margin-top: 3px;
+        }
+
+        /* TTR display at bottom */
+        .ttr-card {
+            display: none;
+            background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(34, 197, 94, 0.02));
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            margin-top: 14px;
+            text-align: center;
+            animation: fadeInUp 0.5s ease-out;
+        }
+        .ttr-label {
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--green);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 6px;
+        }
+        .ttr-value {
+            font-family: var(--font-mono);
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--green);
+            animation: countUp 0.5s ease-out;
+        }
+        .ttr-unit {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        /* ═══════════════════════════════════════════
+           Responsive
+           ═══════════════════════════════════════════ */
+        @media (max-width: 1100px) {
+            #main-grid { grid-template-columns: 1fr; height: auto; }
+            .panel { border-right: none; border-bottom: 1px solid var(--border-subtle); min-height: 300px; }
+            #top-banner { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     Top Banner
+     ═══════════════════════════════════════════ -->
+<header id="top-banner">
+    <div class="banner-left">
+        <div class="banner-logo">🚨</div>
+        <div>
+            <div class="banner-title">AI SRE Agent</div>
+            <div class="banner-subtitle">Live Incident Response</div>
+        </div>
+    </div>
+
+    <div class="banner-center">
+        <select class="scenario-select" id="scenario-select">
+            <option value="cascade_failure">🔴 Hard — Full Cascade Failure</option>
+            <option value="database_latency">🟡 Medium — Database Latency Cascade</option>
+            <option value="single_service_failure">🟢 Easy — Single Service Failure</option>
+        </select>
+        <button class="trigger-btn" id="trigger-btn" onclick="startDemo()">
+            ▶ TRIGGER INCIDENT
+        </button>
+    </div>
+
+    <div class="banner-right">
+        <div id="resolution-banner"></div>
+        <div class="live-indicator">
+            <div class="live-dot" id="live-dot"></div>
+            <span id="live-text">READY</span>
+        </div>
+    </div>
+</header>
+
+<!-- ═══════════════════════════════════════════
+     3-Panel Grid
+     ═══════════════════════════════════════════ -->
+<main id="main-grid">
+
+    <!-- ─── Left Panel: System Status ─── -->
+    <section class="panel" id="left-panel">
+        <div class="panel-header">
+            <h2>System Status</h2>
+        </div>
+        <div class="panel-body" id="service-cards">
+            <!-- Populated by JS -->
+        </div>
+    </section>
+
+    <!-- ─── Center Panel: Agent Activity ─── -->
+    <section class="panel" id="center-panel">
+        <div class="panel-header">
+            <h2>Agent Activity Feed</h2>
+        </div>
+        <div class="panel-body" id="activity-feed">
+            <div id="idle-state">
+                <div class="idle-icon">🤖</div>
+                <div class="idle-title">Agent Standing By</div>
+                <div class="idle-desc">
+                    Select a scenario and click <strong>TRIGGER INCIDENT</strong> to watch
+                    the AI SRE agent autonomously diagnose and fix a production outage in real-time.
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ─── Right Panel: Timeline & Score ─── -->
+    <section class="panel" id="right-panel">
+        <div class="panel-header">
+            <h2>Incident Timeline</h2>
+        </div>
+        <div class="panel-body">
+            <!-- Score Card -->
+            <div class="score-card" id="score-card">
+                <div class="score-label">Cumulative Reward</div>
+                <div>
+                    <span class="score-value" id="score-value">0.00</span>
+                    <span class="score-max" id="score-max"></span>
+                </div>
+                <div class="progress-container">
+                    <div class="progress-bar-bg">
+                        <div class="progress-bar-fill" id="progress-fill"></div>
+                    </div>
+                    <div class="progress-meta">
+                        <span id="step-counter">Step 0</span>
+                        <span id="step-total"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline -->
+            <div class="timeline" id="timeline"></div>
+
+            <!-- TTR Card -->
+            <div class="ttr-card" id="ttr-card">
+                <div class="ttr-label">Time to Resolve</div>
+                <div>
+                    <span class="ttr-value" id="ttr-value">0</span>
+                    <span class="ttr-unit">seconds</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<script>
+/* ═══════════════════════════════════════════════════════
+   State
+   ═══════════════════════════════════════════════════════ */
+const BASE = window.location.origin;
+let isRunning = false;
+let currentEventSource = null;
+
+const SERVICES_ORDER = [
+    'api-gateway', 'payment-service', 'user-service', 'db-primary', 'cache-redis'
+];
+
+/* Default healthy state for initial render */
+const DEFAULT_SERVICES = {};
+SERVICES_ORDER.forEach(s => {
+    DEFAULT_SERVICES[s] = { status: 'healthy', error_rate: 0.1, latency_p99_ms: 45 };
+});
+
+/* ═══════════════════════════════════════════════════════
+   DOM References
+   ═══════════════════════════════════════════════════════ */
+const $serviceCards = document.getElementById('service-cards');
+const $activityFeed = document.getElementById('activity-feed');
+const $timeline = document.getElementById('timeline');
+const $scoreValue = document.getElementById('score-value');
+const $scoreMax = document.getElementById('score-max');
+const $progressFill = document.getElementById('progress-fill');
+const $stepCounter = document.getElementById('step-counter');
+const $stepTotal = document.getElementById('step-total');
+const $triggerBtn = document.getElementById('trigger-btn');
+const $scenarioSelect = document.getElementById('scenario-select');
+const $resolutionBanner = document.getElementById('resolution-banner');
+const $liveDot = document.getElementById('live-dot');
+const $liveText = document.getElementById('live-text');
+const $ttrCard = document.getElementById('ttr-card');
+const $ttrValue = document.getElementById('ttr-value');
+const $idleState = document.getElementById('idle-state');
+
+/* ═══════════════════════════════════════════════════════
+   Render: Service Cards
+   ═══════════════════════════════════════════════════════ */
+function renderServiceCards(services, celebrate = false) {
+    $serviceCards.innerHTML = '';
+    SERVICES_ORDER.forEach(name => {
+        const svc = services[name] || { status: 'healthy', error_rate: 0, latency_p99_ms: 0 };
+        const status = svc.status || 'healthy';
+        const errRate = typeof svc.error_rate === 'number' ? svc.error_rate : 0;
+        const latency = typeof svc.latency_p99_ms === 'number' ? svc.latency_p99_ms : 0;
+
+        const card = document.createElement('div');
+        card.className = `service-card ${status}${celebrate ? ' resolved' : ''}`;
+        card.id = `svc-${name}`;
+
+        const errClass = errRate > 10 ? 'bad' : errRate > 2 ? 'warn' : 'good';
+        const latClass = latency > 1000 ? 'bad' : latency > 400 ? 'warn' : 'good';
+
+        card.innerHTML = `
+            <div class="svc-header">
+                <span class="svc-name">${name}</span>
+                <span class="svc-badge ${status}">${status === 'critical' ? '🔴 CRITICAL' : status === 'degraded' ? '🟡 DEGRADED' : '🟢 HEALTHY'}</span>
+            </div>
+            <div class="svc-metrics">
+                <div class="svc-metric">
+                    <span class="svc-metric-label">Error Rate</span>
+                    <span class="svc-metric-value ${errClass}">${errRate.toFixed(1)}%</span>
+                </div>
+                <div class="svc-metric">
+                    <span class="svc-metric-label">P99 Latency</span>
+                    <span class="svc-metric-value ${latClass}">${latency.toLocaleString()}ms</span>
+                </div>
+            </div>
+        `;
+        $serviceCards.appendChild(card);
+    });
+}
+
+/* ═══════════════════════════════════════════════════════
+   Render: Timeline Items
+   ═══════════════════════════════════════════════════════ */
+function addTimelineItem(icon, iconClass, title, desc, reward) {
+    const item = document.createElement('div');
+    item.className = 'timeline-item';
+    let rewardHtml = '';
+    if (reward !== undefined && reward !== null) {
+        const rClass = reward > 0 ? 'color: var(--green)' : reward < 0 ? 'color: var(--red)' : 'color: var(--text-tertiary)';
+        rewardHtml = `<div class="timeline-reward" style="${rClass}">${reward > 0 ? '+' : ''}${reward.toFixed(2)}</div>`;
+    }
+    item.innerHTML = `
+        <div class="timeline-icon ${iconClass}">${icon}</div>
+        <div class="timeline-content">
+            <div class="timeline-title">${title}</div>
+            <div class="timeline-desc">${desc}</div>
+            ${rewardHtml}
+        </div>
+    `;
+    $timeline.appendChild(item);
+    item.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* ═══════════════════════════════════════════════════════
+   Render: Activity Feed Entries
+   ═══════════════════════════════════════════════════════ */
+function addAlertEntry(text) {
+    const entry = document.createElement('div');
+    entry.className = 'alert-entry';
+    entry.innerHTML = `
+        <div class="alert-badge">🚨 INCIDENT ALERT</div>
+        <div class="alert-text">${escapeHtml(text)}</div>
+    `;
+    $activityFeed.appendChild(entry);
+    scrollFeed();
+}
+
+function addThinkingEntry(reasoning) {
+    // Remove previous thinking entry
+    const prev = $activityFeed.querySelector('.thinking-entry');
+    if (prev) prev.remove();
+
+    const entry = document.createElement('div');
+    entry.className = 'thinking-entry';
+    entry.innerHTML = `
+        <div class="thinking-dots">
+            <div class="thinking-dot"></div>
+            <div class="thinking-dot"></div>
+            <div class="thinking-dot"></div>
+            <span>Agent thinking...</span>
+        </div>
+        <div class="thinking-text">"${escapeHtml(reasoning)}"</div>
+    `;
+    $activityFeed.appendChild(entry);
+    scrollFeed();
+    return entry;
+}
+
+function addStepEntry(data) {
+    // Remove thinking entry
+    const thinking = $activityFeed.querySelector('.thinking-entry');
+    if (thinking) thinking.remove();
+
+    const category = data.action_category || 'investigate';
+    const rVal = data.reward || 0;
+    const rClass = rVal > 0 ? 'positive' : rVal < 0 ? 'negative' : 'neutral';
+    const rSign = rVal > 0 ? '+' : '';
+
+    const obsPreview = (data.observation_text || '').substring(0, 300);
+
+    const entry = document.createElement('div');
+    entry.className = 'step-entry';
+    entry.innerHTML = `
+        <div class="step-number ${category}">${data.step}</div>
+        <div class="step-action-line">
+            <span class="step-action-name">${data.action_type}</span>
+            ${data.target ? `<span class="step-action-target">(${escapeHtml(data.target)})</span>` : ''}
+            <span class="step-reward ${rClass}">${rSign}${rVal.toFixed(2)}</span>
+        </div>
+        <div class="step-reasoning">"${escapeHtml(data.reasoning || '')}"</div>
+        <div class="step-observation">${escapeHtml(obsPreview)}</div>
+    `;
+    $activityFeed.appendChild(entry);
+    scrollFeed();
+}
+
+function scrollFeed() {
+    $activityFeed.scrollTop = $activityFeed.scrollHeight;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Reset UI
+   ═══════════════════════════════════════════════════════ */
+function resetUI() {
+    $activityFeed.innerHTML = '';
+    $timeline.innerHTML = '';
+    $scoreValue.textContent = '0.00';
+    $scoreValue.className = 'score-value';
+    $scoreMax.textContent = '';
+    $progressFill.style.width = '0%';
+    $stepCounter.textContent = 'Step 0';
+    $stepTotal.textContent = '';
+    $resolutionBanner.style.display = 'none';
+    $ttrCard.style.display = 'none';
+    $liveDot.className = 'live-dot alert';
+    $liveText.textContent = 'INCIDENT';
+    renderServiceCards(DEFAULT_SERVICES);
+}
+
+/* ═══════════════════════════════════════════════════════
+   Start Demo
+   ═══════════════════════════════════════════════════════ */
+function startDemo() {
+    if (isRunning) return;
+    isRunning = true;
+
+    const task = $scenarioSelect.value;
+    resetUI();
+
+    $triggerBtn.classList.add('running');
+    $triggerBtn.textContent = '⏳ RUNNING...';
+    $triggerBtn.disabled = true;
+    $scenarioSelect.disabled = true;
+
+    // Close any existing SSE connection
+    if (currentEventSource) {
+        currentEventSource.close();
+        currentEventSource = null;
+    }
+
+    // Use fetch + ReadableStream for POST SSE
+    fetch(`${BASE}/demo/run?task=${encodeURIComponent(task)}`, {
+        method: 'POST',
+        headers: { 'Accept': 'text/event-stream' },
+    }).then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function processStream() {
+            reader.read().then(({ done, value }) => {
+                if (done) {
+                    finishDemo();
+                    return;
+                }
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+
+                for (const line of lines) {
+                    if (line.startsWith('data: ')) {
+                        try {
+                            const data = JSON.parse(line.slice(6));
+                            handleEvent(data);
+                        } catch (e) {
+                            console.warn('Failed to parse SSE data:', line);
+                        }
+                    }
+                }
+
+                processStream();
+            }).catch(err => {
+                console.error('Stream error:', err);
+                finishDemo();
+            });
+        }
+
+        processStream();
+    }).catch(err => {
+        console.error('Fetch error:', err);
+        finishDemo();
+    });
+}
+
+/* ═══════════════════════════════════════════════════════
+   Handle SSE Events
+   ═══════════════════════════════════════════════════════ */
+let maxReward = 0;
+
+function handleEvent(data) {
+    switch (data.type) {
+
+        case 'reset':
+            maxReward = (data.task_meta && data.task_meta.max_reward) || 2.0;
+            $scoreMax.textContent = ` / ${maxReward.toFixed(2)}`;
+
+            const totalSteps = data.task_meta ? data.task_meta.expected_steps : '?';
+            $stepTotal.textContent = `of ${totalSteps}`;
+
+            renderServiceCards(data.services || {});
+            addAlertEntry(data.alert || 'Incident detected!');
+            addTimelineItem('🚨', 'alert', 'Incident Detected', data.alert || '', null);
+            break;
+
+        case 'thinking':
+            addThinkingEntry(data.reasoning || '');
+            break;
+
+        case 'step':
+            // Update score
+            $scoreValue.textContent = data.cumulative_reward.toFixed(2);
+            if (data.cumulative_reward > 0) $scoreValue.className = 'score-value positive';
+
+            // Progress bar
+            const pct = Math.min(100, Math.max(0, (data.cumulative_reward / maxReward) * 100));
+            $progressFill.style.width = pct + '%';
+
+            // Step counter
+            $stepCounter.textContent = `Step ${data.step}`;
+
+            // Service cards
+            if (data.services) renderServiceCards(data.services);
+
+            // Activity feed
+            addStepEntry(data);
+
+            // Timeline
+            const category = data.action_category || 'investigate';
+            const iconMap = { investigate: '🔍', fix: '🔧', resolve: '✅' };
+            const actionLabel = data.target
+                ? `${data.action_type}(${data.target})`
+                : data.action_type;
+            addTimelineItem(
+                iconMap[category] || '📋',
+                category,
+                `Step ${data.step}: ${actionLabel}`,
+                truncate(data.reasoning || '', 80),
+                data.reward
+            );
+            break;
+
+        case 'resolved':
+            // Celebration state
+            $liveDot.className = 'live-dot';
+            $liveText.textContent = 'RESOLVED';
+
+            // Update final score
+            $scoreValue.textContent = data.cumulative_reward.toFixed(2);
+            $progressFill.style.width = '100%';
+
+            // Show resolution banner
+            $resolutionBanner.style.display = 'block';
+            $resolutionBanner.innerHTML = `✅ Incident Resolved in ${data.total_steps} steps | Score: ${data.cumulative_reward.toFixed(2)} / ${data.max_reward.toFixed(2)}`;
+
+            // TTR card
+            $ttrCard.style.display = 'block';
+            $ttrValue.textContent = data.elapsed_seconds;
+
+            // Final timeline item
+            addTimelineItem('🎉', 'resolve', 'Incident Resolved',
+                `Completed in ${data.total_steps} steps, ${data.elapsed_seconds}s`, data.cumulative_reward);
+
+            // Service cards → all green celebration
+            if (data.services) {
+                // Force all to healthy for the visual wow
+                const allHealthy = {};
+                SERVICES_ORDER.forEach(s => {
+                    allHealthy[s] = { status: 'healthy', error_rate: 0.1, latency_p99_ms: 45 };
+                });
+                renderServiceCards(allHealthy, true);
+            }
+
+            finishDemo();
+            break;
+
+        case 'error':
+            console.error('Demo error:', data.message);
+            addAlertEntry(`Error: ${data.message}`);
+            finishDemo();
+            break;
+    }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Finish Demo (reset button state)
+   ═══════════════════════════════════════════════════════ */
+function finishDemo() {
+    isRunning = false;
+    $triggerBtn.classList.remove('running');
+    $triggerBtn.textContent = '▶ TRIGGER INCIDENT';
+    $triggerBtn.disabled = false;
+    $scenarioSelect.disabled = false;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Utilities
+   ═══════════════════════════════════════════════════════ */
+function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function truncate(str, len) {
+    return str.length > len ? str.substring(0, len) + '...' : str;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Initialize
+   ═══════════════════════════════════════════════════════ */
+renderServiceCards(DEFAULT_SERVICES);
+</script>
+
+</body>
+</html>

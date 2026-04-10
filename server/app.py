@@ -10,11 +10,13 @@ import logging
 import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ValidationError
 
 from environment import IncidentResponseEnv, SCENARIO_MAP
@@ -102,6 +104,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── Mount demo router ──
+from server.demo_routes import router as demo_router
+app.include_router(demo_router)
+
+# ── Static files for the live demo dashboard ──
+_STATIC_DIR = Path(__file__).resolve().parent.parent / "src" / "static"
+if _STATIC_DIR.is_dir():
+    app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
 # ──────────────────────────────────────────────
 # Request logging middleware
 # ──────────────────────────────────────────────
@@ -142,6 +153,12 @@ async def validation_error_handler(_request: Request, exc: ValidationError):
 
 @app.get("/", response_class=HTMLResponse)
 async def root():
+    """Serve the live demo dashboard (or fallback to embedded HTML)."""
+    dashboard = Path(__file__).resolve().parent.parent / "src" / "static" / "index.html"
+    if dashboard.is_file():
+        return FileResponse(str(dashboard), media_type="text/html")
+
+    # Fallback: minimal redirect to /docs
     html_content = """
 <!DOCTYPE html>
 <html lang="en">
