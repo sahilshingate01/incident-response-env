@@ -57,7 +57,7 @@ def grade_trajectory_generic(
         if inv_actions_before_fix < 2 and diagnosis_items_found < len(required_diagnosis):
             early_fix = True
 
-    score = round(max(0.0, min(1.0, total_reward / max_reward)), 4)
+    score = round(max(0.01, min(0.99, total_reward / max_reward)), 4)
 
     if early_fix:
         return {
@@ -137,7 +137,7 @@ def grade_memory_leak_oom(state: IncidentState, actions_taken: list[str], total_
         "resolution": resolution
     }
 
-    score = round(max(0.0, min(1.0, total_reward / max_reward)), 4)
+    score = round(max(0.01, min(0.99, total_reward / max_reward)), 4)
     return {
         "score": score,
         "max_score": 1.0,
