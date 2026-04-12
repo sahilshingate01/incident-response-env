@@ -1,53 +1,77 @@
 name: incident-response-env
 version: "1.0.0"
-description: "Production incident response simulation. An AI agent receives system alerts and must diagnose and remediate production failures across 3 difficulty levels."
+description: "Production incident response simulation. An AI agent receives system alerts and must diagnose and remediate production failures across a 5-service microservice architecture."
 url: "https://sahilshingate-incident-response-env.hf.space"
 author: "Sahil Shingate"
 license: "MIT"
-
 tags:
   - openenv
   - incident-response
   - sre
-  - real-world
+  - reinforcement-learning
+  - llm-evaluation
 
 environment:
   type: text
   observation_space:
     type: object
-    description: "Current incident state. Fields: observation_text (string), services_summary (object with status/error_rate/latency_p99_ms per service), available_actions (list[string]), step_count (int), incident_description (string), done (bool), reward (float), metadata (object with episode_id, cumulative_reward, diagnosis_state)"
+    fields:
+      observation_text: {type: string, description: "Human-readable output from the last action"}
+      services_summary: {type: object, description: "Status of all 5 services with error_rate and latency_p99_ms"}
+      available_actions: {type: array, description: "Valid action hints for the agent"}
+      step_count: {type: integer}
+      incident_description: {type: string}
+      done: {type: boolean}
+      reward: {type: float}
+      metadata: {type: object, description: "episode_id, cumulative_reward, diagnosis_state, reward_reasoning, seed"}
   action_space:
     type: object
-    description: "Diagnostic and remediation actions. Fields: action_type (read_logs | check_metrics | check_all_services | check_recent_deploys | check_db_queries | rollback | restart_service | scale_up | declare_resolved), target (string or null), task_name (string)"
-  reward_range: [-2.0, 3.0]
+    fields:
+      action_type: {type: string, enum: [read_logs, check_metrics, check_all_services, check_recent_deploys, check_db_queries, rollback, restart_service, scale_up, declare_resolved]}
+      target: {type: string, nullable: true, description: "Service name or deploy ID depending on action"}
+      task_name: {type: string, description: "Active task name"}
+
+endpoints:
+  health: {method: GET, path: /health}
+  reset: {method: POST, path: /reset}
+  reset_task: {method: POST, path: "/reset/{task_name}"}
+  step: {method: POST, path: /step}
+  grade: {method: POST, path: /grade}
+  tasks: {method: GET, path: /tasks}
+  state: {method: GET, path: /state}
 
 tasks:
   - name: single_service_failure
     difficulty: easy
-    description: "A bad deploy to user-service is causing 500 errors. Agent must check recent deploys, read user-service logs, and rollback the deployment."
-    max_steps: 10
+    description: "A bad deploy to user-service causes 40-80% error rate. Agent must check recent deploys, read logs, and rollback."
+    max_steps: 15
     success_threshold: 0.5
-    baseline_score: 0.72
+    max_possible_reward: 1.70
 
   - name: database_latency
     difficulty: medium
-    description: "db-primary overloaded causing cascade to payment-service and api-gateway. Agent must check api-gateway and db-primary metrics, check queries, then scale_up db-primary."
+    description: "DB primary overloaded with 498/500 connections. Agent must trace latency from api-gateway upstream to db-primary and scale up."
     max_steps: 15
     success_threshold: 0.6
-    baseline_score: 0.61
+    max_possible_reward: 1.90
 
   - name: cascade_failure
     difficulty: hard
-    description: "Connection pool exhaustion causing cascade across 4 services. Must diagnose across 3 services + logs + queries, then restart db-primary followed by payment-service in strict order."
-    max_steps: 20
+    description: "Full cascade failure: DB connection pool exhaustion → payment timeouts → API retry storm. Fix order matters."
+    max_steps: 15
     success_threshold: 0.7
-    baseline_score: 0.25
+    max_possible_reward: 2.50
 
-endpoints:
-  health: GET /health
-  tasks: GET /tasks
-  reset: POST /reset
-  reset_task: POST /reset/{task_name}
-  step: POST /step
-  state: GET /state
-  grade: POST /grade
+  - name: memory_leak_oom
+    difficulty: medium
+    description: "user-service has a memory leak causing gradual OOM. Agent must read logs, check metrics, and restart the service."
+    max_steps: 15
+    success_threshold: 0.5
+    max_possible_reward: 1.70
+
+grading:
+  method: POST
+  path: /grade
+  score_range: [0.0, 1.0]
+  score_field: score
+  pass_field: passed

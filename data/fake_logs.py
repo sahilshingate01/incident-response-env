@@ -4,11 +4,14 @@ from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 class FakeLogEngine:
-    def __init__(self, incident_type: Optional[str] = "normal"):
+    def __init__(self, incident_type: Optional[str] = "normal", seed: Optional[int] = None):
+        if seed is None:
+            seed = random.randint(0, 999999)
         self.incident_type = incident_type
         self.current_time = datetime.utcnow()
         self.step = 0
-        random.seed(f"logs-{incident_type}")
+        self.seed = seed
+        self.rng = random.Random(f"{seed}-logs-{incident_type}")
 
     def advance_time(self):
         self.step += 1
@@ -27,10 +30,10 @@ class FakeLogEngine:
                 is_affected = True
                 
         for _ in range(lines):
-            ts = (self.current_time - timedelta(seconds=random.randint(0, 15))).isoformat() + "Z"
-            trace_id = f"trace-{random.randint(100000, 999999)}"
+            ts = (self.current_time - timedelta(seconds=self.rng.randint(0, 15))).isoformat() + "Z"
+            trace_id = f"trace-{self.rng.randint(100000, 999999)}"
             
-            if random.random() < 0.4:
+            if self.rng.random() < 0.4:
                 logs_output.append({
                     "timestamp": ts, "level": "INFO", "trace_id": trace_id, "service": service_name,
                     "message": "Routine health check executed successfully.",
@@ -38,7 +41,7 @@ class FakeLogEngine:
                 })
                 continue
                 
-            if is_affected and random.random() < 0.6:
+            if is_affected and self.rng.random() < 0.6:
                 if service_name == "db-primary":
                     logs_output.append({
                         "timestamp": ts, "level": "ERROR", "trace_id": trace_id, "service": service_name,
@@ -57,10 +60,24 @@ class FakeLogEngine:
                         "message": "Upstream timeout from payment-service. Falling back to cache... Cache MISS.",
                         "stack_trace": "at api.GatewayFilter.doFilter(GatewayFilter.java:55)\n  at cache.RedisFallback.fetch(RedisFallback.java:23)"
                     })
+            elif self.incident_type == "memory_leak" and service_name == "user-service":
+                if self.rng.random() < 0.6:
+                    msg = self.rng.choice([
+                        "WARN  [user-service] Memory usage at 89% — GC pressure increasing",
+                        "ERROR [user-service] java.lang.OutOfMemoryError: Java heap space",
+                        "ERROR [user-service] Pod OOM killed — restart count: 7",
+                        "INFO  [user-service] Pod restarted — uptime reset to 0s",
+                        "ERROR [user-service] Connection pool timeout — service restarting"
+                    ])
+                    level = "ERROR" if "ERROR" in msg else ("WARN" if "WARN" in msg else "INFO")
+                    logs_output.append({
+                        "timestamp": ts, "level": level, "trace_id": trace_id, "service": service_name,
+                        "message": msg
+                    })
             else:
                 logs_output.append({
                     "timestamp": ts, "level": "INFO", "trace_id": trace_id, "service": service_name,
-                    "message": f"Successfully processed request for user-{random.randint(1,500)}"
+                    "message": f"Successfully processed request for user-{self.rng.randint(1,500)}"
                 })
 
         logs_output.sort(key=lambda x: x["timestamp"])

@@ -114,8 +114,8 @@ Respond ONLY with valid JSON. No explanation. No markdown. Just the JSON object.
 # Logging helper (strictly matching sample)
 # ──────────────────────────────────────────────
 
-def log_start(task: str, env: str, model: str) -> None:
-    print(f"[START] task={task} env={env} model={model}", flush=True)
+def log_start(task: str, env: str, model: str, seed: int | str = "null") -> None:
+    print(f"[START] task={task} env={env} model={model} seed={seed}", flush=True)
 
 
 def log_step(step: int, action: str, reward: float, done: bool, error: str | None = None) -> None:
@@ -206,9 +206,10 @@ class EnvClient:
     def __init__(self):
         self.http = httpx.Client(base_url=ENV_BASE_URL, timeout=30.0)
 
-    def reset(self, task_name: str) -> dict:
+    def reset(self, task_name: str, seed: int | None = None) -> dict:
         """Reset (or switch to) the given task. Returns observation dict."""
-        r = self.http.post(f"/reset/{task_name}")
+        payload = {"seed": seed} if seed else None
+        r = self.http.post(f"/reset/{task_name}", json=payload)
         r.raise_for_status()
         return r.json()
 
@@ -253,11 +254,12 @@ def run_episode(
     Run a single episode for the given task.
     Returns: {task_name, score, steps, success, rewards}
     """
-    # ── [START] ──
-    log_start(task=task_name, env="incident-response-env", model=MODEL_NAME)
-
     # Reset environment to this task
     obs = env.reset(task_name)
+    seed = obs.get("metadata", {}).get("seed", "null")
+
+    # ── [START] ──
+    log_start(task=task_name, env="incident-response-env", model=MODEL_NAME, seed=seed)
 
     conversation: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -366,8 +368,8 @@ def run_episode(
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
 
     # ── [END] ──
-    # Ensure final logged score is strictly within (0, 1)
-    final_scorable_score = max(0.01, min(0.99, grader_score))
+    # Scorer already calculates correctly [0, 1] natively via graders upgrade
+    final_scorable_score = grader_score
     log_end(success=success, steps=step_n, score=final_scorable_score, rewards=rewards)
 
     return {

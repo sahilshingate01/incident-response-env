@@ -1,14 +1,8 @@
-"""
-IncidentResponseEnv — the core OpenEnv-compliant RL environment.
-
-Wraps FakeMetricsEngine, FakeLogEngine, FakeDeployHistory and the
-scenario definitions to provide reset(), step(), state() API.
-"""
-
 from __future__ import annotations
 
+import random
 from collections import Counter
-from typing import Dict, List
+from typing import Dict, List, Optional
 from uuid import uuid4
 
 from data.fake_deploys import FakeDeployHistory
@@ -18,6 +12,7 @@ from data.incident_scenarios import (
     TASK_1_EASY,
     TASK_2_MEDIUM,
     TASK_3_HARD,
+    TASK_4_OOM,
     IncidentScenario,
 )
 from models import (
@@ -28,14 +23,11 @@ from models import (
     IncidentState,
 )
 
-# ──────────────────────────────────────────────
-# Scenario registry
-# ──────────────────────────────────────────────
-
 SCENARIO_MAP: Dict[str, IncidentScenario] = {
     "single_service_failure": TASK_1_EASY,
     "database_latency": TASK_2_MEDIUM,
     "cascade_failure": TASK_3_HARD,
+    "memory_leak_oom": TASK_4_OOM
 }
 
 ALERT_MESSAGES: Dict[str, str] = {
@@ -51,6 +43,10 @@ ALERT_MESSAGES: Dict[str, str] = {
         "🚨 ALERT: Error rate spike detected on multiple services. "
         "Users reporting checkout failures. P1 incident declared."
     ),
+    "memory_leak_oom": (
+        "🚨 ALERT: user-service restarting frequently due to OOM kills. "
+        "Memory consumption climbing. P1 incident declared."
+    )
 }
 
 AVAILABLE_ACTIONS_DISPLAY: List[str] = [
@@ -64,11 +60,6 @@ AVAILABLE_ACTIONS_DISPLAY: List[str] = [
     'scale_up(target=<service_name>)',
     'declare_resolved()',
 ]
-
-
-# ──────────────────────────────────────────────
-# Slow-query templates
-# ──────────────────────────────────────────────
 
 SLOW_QUERY_TEMPLATES: Dict[str, str] = {
     "db_overload": (
@@ -93,13 +84,7 @@ SLOW_QUERY_TEMPLATES: Dict[str, str] = {
         "-- blocked by lock on payment_transactions\n"
         "⚠️  Connection pool: 200/200 EXHAUSTED | Deadlocks: 128 in last 10 min\n"
         "⚠️  Oldest waiting connection: 94s | Thread stack depth: CRITICAL"
-    ),
-    "bad_deploy": (
-        "=== Slow Query Log (last 30 min) ===\n"
-        "1. [320ms] SELECT * FROM users WHERE id = ?; -- normal\n"
-        "2. [180ms] SELECT * FROM sessions WHERE user_id = ?; -- normal\n"
-        "No anomalies detected. DB performance is within normal parameters."
-    ),
+    )
 }
 
 DEFAULT_SLOW_QUERY = (
@@ -107,24 +92,7 @@ DEFAULT_SLOW_QUERY = (
     "No anomalies detected. DB performance is within normal parameters."
 )
 
-
-# ──────────────────────────────────────────────
-# Environment
-# ──────────────────────────────────────────────
-
 class IncidentResponseEnv:
-    """
-    OpenEnv-compliant Incident Response environment.
-
-    Lifecycle:
-        env = IncidentResponseEnv("single_service_failure")
-        obs = env.reset()
-        while not obs.done:
-            action = agent.decide(obs)
-            obs = env.step(action)
-        print(env.state())
-    """
-
     def __init__(self, task_name: str) -> None:
         if task_name not in SCENARIO_MAP:
             raise ValueError(
@@ -134,13 +102,12 @@ class IncidentResponseEnv:
 
         self.task_name: str = task_name
         self.scenario: IncidentScenario = SCENARIO_MAP[task_name]
+        self.seed: int = random.randint(0, 999999)
 
-        # Data engines
-        self.metrics_engine = FakeMetricsEngine(self.scenario.incident_type)
-        self.log_engine = FakeLogEngine(self.scenario.incident_type)
-        self.deploy_history = FakeDeployHistory(self.scenario.incident_type)
+        self.metrics_engine = FakeMetricsEngine(self.scenario.incident_type, self.seed)
+        self.log_engine = FakeLogEngine(self.scenario.incident_type, self.seed)
+        self.deploy_history = FakeDeployHistory(self.scenario.incident_type, self.seed)
 
-        # Episode state (initialised properly in reset())
         self.episode_id: str = str(uuid4())
         self.step_count: int = 0
         self.actions_taken: List[str] = []
@@ -155,16 +122,10 @@ class IncidentResponseEnv:
             "identified_root_cause": False
         }
 
-        # Track which correct diagnosis / fix actions have been seen
         self._diagnosis_hits: set[str] = set()
         self._fix_hits: set[str] = set()
 
-    # ──────────────────────────────────────────
-    # Public API
-    # ──────────────────────────────────────────
-
-    def reset(self) -> IncidentObservation:
-        """Reset all state and return the initial observation."""
+    def reset(self, seed: Optional[int] = None) -> IncidentObservation:
         self.episode_id = str(uuid4())
         self.step_count = 0
         self.actions_taken = []
@@ -180,10 +141,13 @@ class IncidentResponseEnv:
         self._diagnosis_hits = set()
         self._fix_hits = set()
 
-        # Re-seed data engines for determinism
-        self.metrics_engine = FakeMetricsEngine(self.scenario.incident_type)
-        self.log_engine = FakeLogEngine(self.scenario.incident_type)
-        self.deploy_history = FakeDeployHistory(self.scenario.incident_type)
+        if seed is None:
+            seed = random.randint(0, 999999)
+        self.seed = seed
+
+        self.metrics_engine = FakeMetricsEngine(self.scenario.incident_type, self.seed)
+        self.log_engine = FakeLogEngine(self.scenario.incident_type, self.seed)
+        self.deploy_history = FakeDeployHistory(self.scenario.incident_type, self.seed)
 
         services_summary = self.metrics_engine.get_all_services_summary()
 
@@ -195,21 +159,20 @@ class IncidentResponseEnv:
             services_summary=services_summary,
             step_count=0,
             incident_description=self.scenario.description,
-            metadata={"episode_id": self.episode_id},
+            metadata={"episode_id": self.episode_id, "seed": self.seed},
         )
 
     def step(self, action: IncidentAction) -> IncidentObservation:
-        """Execute one action and return the resulting observation."""
         if self.done:
             return IncidentObservation(
                 done=True,
                 reward=0.0,
-                observation_text="Episode already finished. Call reset() to start a new episode.",
+                observation_text="Episode already finished.",
                 available_actions=[],
                 services_summary=self.metrics_engine.get_all_services_summary(),
                 step_count=self.step_count,
                 incident_description=self.scenario.description,
-                metadata={"episode_id": self.episode_id},
+                metadata={"episode_id": self.episode_id, "seed": self.seed},
             )
 
         self.step_count += 1
@@ -219,22 +182,14 @@ class IncidentResponseEnv:
         action_key = action.action_key()
         self.actions_taken.append(action_key)
 
-        # Execute the action to get observation text
         observation_text = self._execute_action(action)
-
-        # Calculate reward (may mutate correctly_diagnosed / resolved)
         reward_info = self._calculate_reward(action)
         self.cumulative_reward += reward_info.value
 
-        # Check terminal conditions
         if self.resolved and action.action_type == "declare_resolved":
             self.done = True
-        elif action.action_type == "declare_resolved" and not self.resolved:
-            # Premature declaration — not terminal, agent can keep trying
-            pass
 
         services_summary = self.metrics_engine.get_all_services_summary()
-
         return IncidentObservation(
             done=self.done,
             reward=reward_info.value,
@@ -245,6 +200,7 @@ class IncidentResponseEnv:
             incident_description=self.scenario.description,
             metadata={
                 "episode_id": self.episode_id,
+                "seed": self.seed,
                 "reward_reason": reward_info.reason,
                 "cumulative_reward": round(self.cumulative_reward, 4),
                 "correctly_diagnosed": self.correctly_diagnosed,
@@ -253,7 +209,6 @@ class IncidentResponseEnv:
         )
 
     def state(self) -> IncidentState:
-        """Return the current internal state snapshot."""
         return IncidentState(
             episode_id=self.episode_id,
             task_name=self.task_name,
@@ -265,65 +220,34 @@ class IncidentResponseEnv:
             current_scenario=self.scenario.name,
         )
 
-    # ──────────────────────────────────────────
-    # Private helpers
-    # ──────────────────────────────────────────
-
     def _match_scenario_action(self, action_key: str, scenario_actions: List[str]) -> str | None:
-        """
-        Match an action_key against a list of scenario action strings.
-
-        Scenario actions may be:
-        - Exact: "check_recent_deploys", "read_logs_user-service"
-        - Type-only: "rollback" (matches "rollback_dep-evil-123")
-        - With target: "scale_up_db-primary" (exact match)
-
-        Returns the matched scenario action string, or None.
-        """
-        # 1) Exact match
         if action_key in scenario_actions:
             return action_key
-
-        # 2) Check if any scenario action is just the action_type (no target),
-        #    and our action_key starts with it.  E.g. scenario has "rollback",
-        #    action_key is "rollback_dep-evil-123".
         for sa in scenario_actions:
-            # Only match if the scenario action has no underscore-separated
-            # target (i.e. it IS a bare action_type like "rollback" or "declare_resolved")
             if "_" not in sa and action_key.startswith(sa + "_"):
                 return sa
             if sa == action_key.split("_", 1)[0] and "_" not in sa:
                 return sa
-
         return None
 
     def _calculate_reward(self, action: IncidentAction) -> IncidentReward:
-        """
-        Calculates the reward for the current action based on the scenario's
-        correct diagnosis and fix actions.
-        """
         action_key = action.action_key()
         action_type = action.action_type
         
-        # 1. Efficiency penalty ( Rule 10 )
         reward = 0.0
         reason = "Efficiency penalty"
 
-        # 2. Duplicate action penalty ( Rule 7 )
         if self.actions_taken.count(action_key) > 1:
             reward -= 0.05
             reason = "Repeated action penalty"
             return IncidentReward(value=round(reward, 4), reason=reason)
 
-        # 3. Diagnosis rewards
         diag_match = self._match_scenario_action(action_key, self.scenario.correct_diagnosis_actions)
         if diag_match:
             if diag_match not in self._diagnosis_hits:
                 self._diagnosis_hits.add(diag_match)
                 reward += 0.2
                 reason = "Correct diagnostic step"
-                
-                # Check if all diagnosis steps are done
                 if self._diagnosis_hits >= set(self.scenario.correct_diagnosis_actions):
                     self.correctly_diagnosed = True
                     self.internal_flags["identified_root_cause"] = True
@@ -331,12 +255,10 @@ class IncidentResponseEnv:
                 reward += 0.05
                 reason = "Already performed this diagnostic step"
 
-        # 4. Fix rewards
         fix_match = self._match_scenario_action(action_key, self.scenario.correct_fix_actions)
         if fix_match:
             if fix_match not in self._fix_hits:
                 self._fix_hits.add(fix_match)
-                # Partial credit for fix, more if diagnosed
                 if self.correctly_diagnosed:
                     reward += 0.3
                     reason = "Correct fix applied after proper diagnosis"
@@ -347,9 +269,7 @@ class IncidentResponseEnv:
                 reward += 0.0
                 reason = "Fix already applied"
         
-        # 5. Resolution reward
         if action_type == "declare_resolved":
-            # Check if all fixes are applied
             all_fixes_done = self._fix_hits >= set(self.scenario.correct_fix_actions)
             if all_fixes_done:
                 self.resolved = True
@@ -359,37 +279,32 @@ class IncidentResponseEnv:
                 reward -= 0.2
                 reason = "Declared resolved prematurely"
 
-        # 6. Penalty for wrong first actions if defined (apply if taken before full diagnosis)
         if not self.correctly_diagnosed and self.scenario.wrong_first_actions:
             if self._match_scenario_action(action_key, self.scenario.wrong_first_actions):
                 reward -= 0.15
                 reason = "Penalty for incorrect initial action"
 
-        # Cap reward to Pydantic constraints [-1, 1]
         final_reward = max(-1.0, min(1.0, reward))
         return IncidentReward(value=round(final_reward, 4), reason=reason)
 
     def _execute_action(self, action: IncidentAction) -> str:
-        """
-        Simulate the action and return a human-readable observation string.
-        """
         action_type = action.action_type
         target = action.target or ""
 
         if action_type == "read_logs":
-            if not target:
-                return "Error: read_logs requires a target service name."
+            if not target: return "Error: read_logs requires a target."
             return self.log_engine.get_logs(target, lines=15)
 
         if action_type == "check_metrics":
-            if not target:
-                return "Error: check_metrics requires a target service name."
+            if not target: return "Error: check_metrics requires a target."
             metrics = self.metrics_engine.get_service_metrics(target)
             lines = [f"=== Metrics for {target} ==="]
             lines.append(f"  Error Rate:     {metrics['error_rate']}%")
             lines.append(f"  Latency (p99):  {metrics['latency_p99_ms']}ms")
             lines.append(f"  CPU Usage:      {metrics['cpu_percent']}%")
-            lines.append(f"  Memory Usage:   {metrics['memory_percent']}%")
+            lines.append(f"  Memory Usage:   {metrics.get('memory_percent', 0)}%")
+            if "oom_kill_count" in metrics and metrics["oom_kill_count"] > 0:
+                lines.append(f"  OOM Kills:      {metrics['oom_kill_count']}")
             lines.append(f"  Requests/sec:   {metrics['requests_per_sec']}")
             return "\n".join(lines)
 
@@ -397,186 +312,35 @@ class IncidentResponseEnv:
             summary = self.metrics_engine.get_all_services_summary()
             lines = ["=== All Services Status ==="]
             for svc, info in summary.items():
-                status_icon = {
-                    "healthy": "✅",
-                    "degraded": "⚠️",
-                    "critical": "🔴",
-                }.get(info["status"], "❓")
-                lines.append(
-                    f"  {status_icon} {svc:25s}  status={info['status']:10s}  "
-                    f"error_rate={info['error_rate']:.2f}%  "
-                    f"latency={info['latency_p99_ms']}ms"
-                )
+                status_icon = {"healthy": "✅", "degraded": "⚠️", "critical": "🔴"}.get(info["status"], "❓")
+                lines.append(f"  {status_icon} {svc:25s}  status={info['status']:10s}  error_rate={info['error_rate']:.2f}%  latency={info['latency_p99_ms']}ms")
             return "\n".join(lines)
 
         if action_type == "check_recent_deploys":
             deploys = self.deploy_history.get_recent_deploys()
-            if not deploys:
-                return "No recent deploys found in the last 24 hours."
+            if not deploys: return "No recent deploys found in the last 24 hours."
             lines = ["=== Recent Deploys (last 24h) ==="]
             for d in deploys:
-                lines.append(
-                    f"  [{d['timestamp']}] {d['id']}  {d['service']} -> "
-                    f"{d['version']}  by {d['deployed_by']}  "
-                    f"status={d['status']}  \"{d['commit_message']}\""
-                )
+                lines.append(f"  [{d['timestamp']}] {d['id']}  {d['service']} -> {d['version']}  by {d['deployed_by']}  status={d['status']}  \"{d['commit_message']}\"")
             return "\n".join(lines)
 
         if action_type == "check_db_queries":
-            return SLOW_QUERY_TEMPLATES.get(
-                self.scenario.incident_type, DEFAULT_SLOW_QUERY
-            )
+            return SLOW_QUERY_TEMPLATES.get(self.scenario.incident_type, DEFAULT_SLOW_QUERY)
 
         if action_type == "rollback":
-            if not target:
-                return "Error: rollback requires a target deploy_id."
-            return (
-                f"Rollback of deploy {target} initiated. "
-                "Monitoring error rates..."
-            )
+            if not target: return "Error: rollback requires a target deploy_id."
+            return f"Rollback of deploy {target} initiated. Monitoring error rates..."
 
         if action_type == "restart_service":
-            if not target:
-                return "Error: restart_service requires a target service name."
+            if not target: return "Error: restart_service requires a target service name."
             return f"Restarting {target}... Done. Service healthy."
 
         if action_type == "scale_up":
-            if not target:
-                return "Error: scale_up requires a target service name."
-            return (
-                f"Scaling up {target} from 3 to 6 replicas. "
-                "Load distributing..."
-            )
+            if not target: return "Error: scale_up requires a target service name."
+            return f"Scaling up {target} from 3 to 6 replicas. Load distributing..."
 
         if action_type == "declare_resolved":
-            if self.resolved:
-                return "Incident status updated to RESOLVED."
-            return (
-                "⚠️ Cannot mark as resolved — monitoring still shows active issues. "
-                "Continue investigating."
-            )
+            if self.resolved: return "Incident status updated to RESOLVED."
+            return "⚠️ Cannot mark as resolved — monitoring still shows active issues. Continue investigating."
 
         return f"Unknown action: {action_type}"
-
-
-# ──────────────────────────────────────────────────────────────────
-# Comprehensive test harness
-# ──────────────────────────────────────────────────────────────────
-
-def _run_test_episode(
-    task_name: str,
-    actions: List[IncidentAction],
-    expected_rewards: List[float],
-) -> bool:
-    """
-    Run a full episode and verify rewards match expectations.
-    Returns True if all rewards match.
-    """
-    env = IncidentResponseEnv(task_name)
-    obs = env.reset()
-
-    print(f"\n{'='*70}")
-    print(f"  TASK: {task_name}")
-    print(f"  Scenario: {env.scenario.description}")
-    print(f"  Initial alert: {obs.observation_text[:80]}...")
-    print(f"{'='*70}")
-
-    all_pass = True
-    total_reward = 0.0
-
-    for i, (action, expected_r) in enumerate(zip(actions, expected_rewards)):
-        obs = env.step(action)
-        total_reward += obs.reward
-        match = abs(obs.reward - expected_r) < 1e-6
-        status = "✅" if match else "❌"
-
-        if not match:
-            all_pass = False
-
-        print(
-            f"  Step {i+1}: {action.action_key():40s}  "
-            f"reward={obs.reward:+.1f}  expected={expected_r:+.1f}  {status}  "
-            f"| {obs.metadata.get('reward_reason', '')}"
-        )
-
-    final_state = env.state()
-    print(f"\n  Final State:")
-    print(f"    diagnosed={final_state.correctly_diagnosed}  "
-          f"resolved={final_state.resolved}  "
-          f"done={obs.done}  "
-          f"total_reward={total_reward:+.2f}  "
-          f"steps={final_state.step_count}")
-    print(f"  {'PASS ✅' if all_pass else 'FAIL ❌'}")
-    return all_pass
-
-
-def _make_action(action_type: str, target: str | None, task_name: str) -> IncidentAction:
-    return IncidentAction(action_type=action_type, target=target, task_name=task_name)
-
-
-if __name__ == "__main__":
-    results = []
-
-    # ──────────────────────────────────────────
-    # Task 1: single_service_failure (EASY)
-    # correct_diagnosis: ["check_recent_deploys", "read_logs_user-service"]
-    # correct_fix: ["rollback"]
-    # ──────────────────────────────────────────
-    task1_actions = [
-        _make_action("check_all_services", None, "single_service_failure"),        # neutral (0.0)
-        _make_action("check_recent_deploys", None, "single_service_failure"),      # diagnosis 1/2 (+0.2)
-        _make_action("read_logs", "user-service", "single_service_failure"),       # diagnosis 2/2 (+0.2) → diagnosed
-        _make_action("rollback", "dep-evil-123", "single_service_failure"),        # correct fix (+0.3) → resolved
-        _make_action("declare_resolved", None, "single_service_failure"),          # resolved (+1.0) → done
-    ]
-    task1_expected = [0.0, 0.2, 0.2, 0.3, 1.0]
-    results.append(_run_test_episode("single_service_failure", task1_actions, task1_expected))
-
-    # ──────────────────────────────────────────
-    # Task 2: database_latency (MEDIUM)
-    # correct_diagnosis: ["check_metrics_api-gateway", "check_metrics_db-primary", "check_db_queries"]
-    # correct_fix: ["scale_up_db-primary", "declare_resolved"]
-    # ──────────────────────────────────────────
-    task2_actions = [
-        _make_action("check_metrics", "api-gateway", "database_latency"),          # diagnosis 1/3 (+0.2)
-        _make_action("check_metrics", "payment-service", "database_latency"),      # neutral (0.0)
-        _make_action("check_metrics", "db-primary", "database_latency"),           # diagnosis 2/3 (+0.2)
-        _make_action("check_db_queries", None, "database_latency"),               # diagnosis 3/3 (+0.2) → diagnosed
-        _make_action("scale_up", "db-primary", "database_latency"),               # correct fix 1/2 (+0.3)
-        _make_action("declare_resolved", None, "database_latency"),               # fix 2/2 → resolved (+1.0) → done
-    ]
-    task2_expected = [0.2, 0.0, 0.2, 0.2, 0.3, 1.0]
-    results.append(_run_test_episode("database_latency", task2_actions, task2_expected))
-
-    # ──────────────────────────────────────────
-    # Task 3: cascade_failure (HARD)
-    # correct_diagnosis: ["check_metrics_payment-service", "check_metrics_api-gateway",
-    #                      "check_metrics_db-primary", "read_logs_api-gateway", "check_db_queries"]
-    # correct_fix: ["restart_service_db-primary", "restart_service_payment-service", "declare_resolved"]
-    # wrong_first: ["restart_service_api-gateway", "restart_service_payment-service"]
-    # ──────────────────────────────────────────
-    task3_actions = [
-        _make_action("check_all_services", None, "cascade_failure"),               # neutral (0.0)
-        _make_action("restart_service", "api-gateway", "cascade_failure"),          # wrong first (-0.15)
-        _make_action("check_metrics", "payment-service", "cascade_failure"),        # diagnosis 1/5 (+0.2)
-        _make_action("check_metrics", "api-gateway", "cascade_failure"),            # diagnosis 2/5 (+0.2)
-        _make_action("check_metrics", "db-primary", "cascade_failure"),             # diagnosis 3/5 (+0.2)
-        _make_action("read_logs", "api-gateway", "cascade_failure"),               # diagnosis 4/5 (+0.2)
-        _make_action("check_db_queries", None, "cascade_failure"),                 # diagnosis 5/5 (+0.2) → diagnosed
-        _make_action("restart_service", "db-primary", "cascade_failure"),           # correct fix 1/3 (+0.3)
-        _make_action("restart_service", "payment-service", "cascade_failure"),      # correct fix 2/3 (+0.3)
-        _make_action("declare_resolved", None, "cascade_failure"),                 # correct fix 3/3 → resolved (+1.0)
-    ]
-    task3_expected = [0.0, -0.15, 0.2, 0.2, 0.2, 0.2, 0.2, 0.3, 0.3, 1.0]
-    results.append(_run_test_episode("cascade_failure", task3_actions, task3_expected))
-
-    # ──────────────────────────────────────────
-    # Summary
-    # ──────────────────────────────────────────
-    print(f"\n{'='*70}")
-    print("  SUMMARY")
-    print(f"{'='*70}")
-    task_names = ["single_service_failure", "database_latency", "cascade_failure"]
-    for name, passed in zip(task_names, results):
-        print(f"  {name:30s}  {'PASS ✅' if passed else 'FAIL ❌'}")
-    print(f"\n  Overall: {'ALL PASS ✅' if all(results) else 'SOME FAILED ❌'}")

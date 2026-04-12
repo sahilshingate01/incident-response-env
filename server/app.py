@@ -22,6 +22,8 @@ from pydantic import BaseModel, ValidationError
 from environment import IncidentResponseEnv, SCENARIO_MAP
 from models import IncidentAction, IncidentObservation, IncidentState
 from server.graders import grade
+import asyncio
+import httpx
 
 # ──────────────────────────────────────────────
 # Logging
@@ -55,6 +57,15 @@ def _get_env() -> IncidentResponseEnv:
 # Lifespan
 # ──────────────────────────────────────────────
 
+async def keep_alive():
+    while True:
+        await asyncio.sleep(240)  # every 4 minutes
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.get("http://localhost:7860/health", timeout=5.0)
+        except Exception:
+            pass
+
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     """Initialise the environment on startup, clean up on shutdown."""
@@ -74,7 +85,9 @@ async def lifespan(application: FastAPI):
         logger.error("Failed to initialise environment: %s", exc)
         raise
 
+    task = asyncio.create_task(keep_alive())
     yield  # ← app is running
+    task.cancel()
 
     logger.info("Shutting down environment.")
     _env = None
@@ -496,16 +509,21 @@ async def list_tasks():
     ]
 
 
+class ResetRequest(BaseModel):
+    seed: int | None = None
+
 @app.post("/reset")
-async def reset_env():
+async def reset_env(req: ResetRequest = None):
+    seed = req.seed if req else None
     env = _get_env()
-    obs = env.reset()
-    logger.info("Episode reset  │  episode=%s  task=%s", env.episode_id, env.task_name)
+    obs = env.reset(seed)
+    logger.info("Episode reset  │  episode=%s  task=%s  seed=%s", env.episode_id, env.task_name, env.seed)
     return obs.model_dump()
 
 
 @app.post("/reset/{task_name}")
-async def reset_with_task(task_name: str):
+async def reset_with_task(task_name: str, req: ResetRequest = None):
+    seed = req.seed if req else None
     global _env
     if task_name not in SCENARIO_MAP:
         raise HTTPException(
@@ -516,11 +534,12 @@ async def reset_with_task(task_name: str):
             ),
         )
     _env = IncidentResponseEnv(task_name)
-    obs = _env.reset()
+    obs = _env.reset(seed)
     logger.info(
-        "Task switched & reset  │  task=%s  episode=%s",
+        "Task switched & reset  │  task=%s  episode=%s  seed=%s",
         _env.task_name,
         _env.episode_id,
+        _env.seed,
     )
     return obs.model_dump()
 

@@ -3,17 +3,14 @@ import datetime
 from typing import List, Dict, Optional
 
 class FakeDeployHistory:
-    def __init__(self, incident_type: Optional[str] = None):
+    def __init__(self, incident_type: Optional[str] = None, seed: Optional[int] = None):
         self.incident_type = incident_type
-        if incident_type:
-            random.seed(f"deploys-{incident_type}")
-        else:
-            random.seed("deploys-normal")
+        if seed is None:
+            seed = random.randint(0, 999999)
+        self.seed = seed
+        self.rng = random.Random(f"{seed}-deploys-{incident_type if incident_type else 'normal'}")
 
     def get_recent_deploys(self, hours: int = 24) -> List[Dict]:
-        """
-        Returns list of deploy dicts: {id, service, version, timestamp, deployed_by, status, commit_message}
-        """
         deploys = []
         services = ["api-gateway", "payment-service", "user-service", "db-primary", "cache-redis"]
         engineers = ["sahil", "alice", "bob", "carol", "dave"]
@@ -25,45 +22,42 @@ class FakeDeployHistory:
             "docs: update API documentation"
         ]
 
-        # Standard random deploys
         for i in range(3, 6):
-            service = random.choice(services)
-            ts = (datetime.datetime.now() - datetime.timedelta(hours=random.randint(1, hours))).isoformat()
+            service = self.rng.choice(services)
+            ts = (datetime.datetime.now() - datetime.timedelta(hours=self.rng.randint(1, hours))).isoformat()
             deploys.append({
-                "id": f"dep-{random.randint(1000, 9999)}",
+                "id": f"dep-{self.rng.randint(1000, 9999)}",
                 "service": service,
-                "version": f"v1.2.{random.randint(0, 50)}",
+                "version": f"v1.2.{self.rng.randint(0, 50)}",
                 "timestamp": ts,
-                "deployed_by": random.choice(engineers),
+                "deployed_by": self.rng.choice(engineers),
                 "status": "success",
-                "commit_message": random.choice(commit_messages)
+                "commit_message": self.rng.choice(commit_messages)
             })
 
-        # Inject a suspicious deploy if needed
         if self.incident_type == "bad_deploy":
-            # Deploy 20-30 min ago
-            ts = (datetime.datetime.now() - datetime.timedelta(minutes=random.randint(20, 30))).isoformat()
+            ts = (datetime.datetime.now() - datetime.timedelta(minutes=self.rng.randint(20, 30))).isoformat()
             deploys.append({
-                "id": f"dep-evil-{random.randint(100,999)}",
+                "id": f"dep-evil-{self.rng.randint(100,999)}",
                 "service": "user-service",
                 "version": "v1.3.0",
                 "timestamp": ts,
-                "deployed_by": "alice",
-                "status": "success", # Deploys often finish "successfully" initially
+                "deployed_by": self.rng.choice(engineers),
+                "status": "success",
                 "commit_message": "feat: new user profile caching logic"
             })
+            
+        if self.incident_type == "memory_leak":
+            ts = (datetime.datetime.now() - datetime.timedelta(minutes=self.rng.randint(160, 200))).isoformat()
+            deploys.append({
+                "id": f"dep-mem-{self.rng.randint(100,999)}",
+                "service": "user-service",
+                "version": "v2.1.0",
+                "timestamp": ts,
+                "deployed_by": self.rng.choice(engineers),
+                "status": "success",
+                "commit_message": "feat: process heavy data chunks in memory"
+            })
 
-        # Sort by timestamp (most recent first)
         deploys.sort(key=lambda x: x["timestamp"], reverse=True)
         return deploys
-
-if __name__ == "__main__":
-    print("--- Normal Deploy History ---")
-    history = FakeDeployHistory()
-    for d in history.get_recent_deploys():
-        print(f"[{d['timestamp']}] {d['service']} - {d['commit_message']}")
-        
-    print("\n--- Bad Deploy History ---")
-    history_bad = FakeDeployHistory("bad_deploy")
-    for d in history_bad.get_recent_deploys():
-        print(f"[{d['timestamp']}] {d['service']} - {d['commit_message']}")
