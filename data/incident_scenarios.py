@@ -62,6 +62,13 @@ TASK_4_OOM = IncidentScenario(
   success_threshold=0.5
 )
 
+SCENARIO_MAP = {
+    "single_service_failure": TASK_1_EASY,
+    "database_latency": TASK_2_MEDIUM,
+    "cascade_failure": TASK_3_HARD,
+    "memory_leak_oom": TASK_4_OOM
+}
+
 if __name__ == "__main__":
     print(TASK_1_EASY.model_dump_json(indent=2))
     print(TASK_2_MEDIUM.model_dump_json(indent=2))

@@ -14,6 +14,7 @@ from data.incident_scenarios import (
     TASK_3_HARD,
     TASK_4_OOM,
     IncidentScenario,
+    SCENARIO_MAP,
 )
 from models import (
     VALID_ACTION_TYPES,
@@ -22,13 +23,6 @@ from models import (
     IncidentReward,
     IncidentState,
 )
-
-SCENARIO_MAP: Dict[str, IncidentScenario] = {
-    "single_service_failure": TASK_1_EASY,
-    "database_latency": TASK_2_MEDIUM,
-    "cascade_failure": TASK_3_HARD,
-    "memory_leak_oom": TASK_4_OOM
-}
 
 ALERT_MESSAGES: Dict[str, str] = {
     "single_service_failure": (
